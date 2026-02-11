@@ -32,3 +32,21 @@ Example run (Linux):
 Good Luck!
 
 --jm
+
+Appendix 1: To view HEIC files natively in Windows, a codec is necessary. Microsoft charges $1 for the codec at:
+
+      https://apps.microsoft.com/detail/9nmzlz57r3t7
+
+But a free version is available in the .ZIP here:
+
+      https://codecguide.com/media_foundation_codecs.htm
+
+scroll to the middle of the page, click on Download.
+A file named Media_Foundation_Codecs.zip will appear.
+Uncompress it and double click on Microsoft.HEVCVideoExtension_2.3.8.0_neutral_~_8wekyb3d8bbwe.AppxBundle.
+And now the Photos app can display .HEIC images from iPhone.
+
+Cheers!
+
+--jm
+
