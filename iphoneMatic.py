@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import argparse
 import pathlib
+import re
 from datetime import datetime
 from argparse import RawTextHelpFormatter
 from bplist import BPListReader
@@ -16,89 +17,163 @@ def removePrefix(s, prefix):
         s = s[len(prefix) : ]
     return s
 
+def isFilename_IMG_NNNN(s):
+    return re.match(r'IMG_\d+\..*', s) != None
 
-def processFile(sourceFile, destFile, blob, dryRun):
-    #copy_file_create_subdirs(sourceFile, destFile)
-    reader = BPListReader(blob)
-    parsed = reader.parse()
-    #print(parsed)
-    lastModified = parsed["$objects"][1]["LastModified"]
-    fileSize = parsed["$objects"][1]["Size"]
-    #print(lastModified)
-    #print(fileSize)
+def isFilename_Guid(s):
+    return re.match(r'[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}', s) != None
 
-    suffix = datetime.fromtimestamp(lastModified).strftime("%Y%m%d_%H%M%S")
 
-    p = pathlib.Path(destFile)
-    extension = p.suffix
-    name = p.stem
-    destDir = str(p.parent)
 
-    if name.startswith("IMG_"):
-        name = "IMG_" + suffix
+class IPhoneMatic:
+    def __init__(self, backup_dir, out_dir, dryRun):
+        self.backup_dir = backup_dir
+        self.out_dir = out_dir
+        self.dryRun = dryRun
+        self.existingFilenamesMap = {}
 
-    #Replace IMG_ with VID_ in videos:
-    if extension.lower() == ".mov":
-        if name.startswith("IMG_"):
-            name = "VID_" + name[4:]
+    def extractHardlinks(self, subdir, pathFilter):
+        conn = sqlite3.connect(os.path.join(self.backup_dir, 'Manifest.db'))
 
-    destFile = os.path.join(destDir, name + extension)
+        # simple query to get only media (without thumbnails)
+        query = "SELECT fileId, domain, relativePath, flags, file FROM Files " \
+                + "WHERE domain = 'CameraRollDomain' AND relativePath LIKE '" + pathFilter + "' " \
+                + "ORDER BY relativePath"
 
-    #Show source and dest:
-    print(sourceFile, "->", destFile)
-    if dryRun:
-        return
+        MAX = 500000000000
+        i = 0
+        for subfile, _, relpath, _, blob in conn.cursor().execute(query):
+            # files are stored in subdirectories, that match first 2 characters of their names
+            sourceSubdir = subfile[:2]
 
-    dirName = os.path.dirname(destFile)
-    #Create intermediate dirs:
-    if not os.path.exists(dirName):
+            relpath = removePrefix(relpath, "Media/DCIM/")
+            relpath = removePrefix(relpath, "100APPLE/")
+
+            # abspath will normalize path separators (windows uses reverse slashes, but relpath has forward ones)
+            # doing it on sourceFile is not really necessary, but won't hurt
+            sourceFile = os.path.abspath(os.path.join(self.backup_dir, sourceSubdir, subfile))
+            outputDir = self.out_dir
+            if subdir != "" and subdir != None:
+                outputDir = os.path.join(outputDir, subdir)
+            destFile = os.path.abspath(os.path.join(outputDir, relpath))
+
+            if os.path.isfile(sourceFile):
+                try:
+                    self.processFile(sourceFile, destFile, blob)
+                except Exception as e:
+                    print("ERROR processing file", destFile, ": ", e, '\n')
+                i += 1
+
+            if i == MAX:
+                return
+
+    def processFile(self, sourceFile, destFile, blob):
+        lastModified = None
+        fileSize = None
+        parsed = {}
         try:
-            os.makedirs(dirName)
-        except OSError as exc: # Guard against race condition
-            if exc.errno != errno.EEXIST:
-                raise
-    #Hardlink:
-    try:
-        os.link(sourceFile, destFile)
-    except FileExistsError:
-        print("File exists")
-        pass
-    #Set MTIME:
-    os.utime(destFile, (lastModified, lastModified))
+            reader = BPListReader(blob)
+            parsed = reader.parse()
+            #print(parsed)
+            print(parsed)  #debug
+        except:
+            print("Error reading: ", destFile, " with GUID ", os.path.basename(sourceFile))
 
+        if "$objects" in parsed and len(parsed["$objects"]) >= 2:
+            if "LastModified" in parsed["$objects"][1]:
+                lastModified = parsed["$objects"][1]["LastModified"]
+            if "Size" in parsed["$objects"][1]:
+                fileSize = parsed["$objects"][1]["Size"]
+            #print(lastModified)
+            #print(fileSize)
+            #print(parsed)
 
+        if lastModified == None or fileSize == None:
+            print("Error reading, LastModified or Size attributes not found: ", destFile, " with GUID ", os.path.basename(sourceFile))
 
-def extractHardlinks(backup_dir, out_dir, dryRun):
-    conn = sqlite3.connect(os.path.join(backup_dir, 'Manifest.db'))
-
-    # simple query to get only media (without thumbnails)
-    query = "SELECT fileId, domain, relativePath, flags, file FROM Files " \
-            + "WHERE domain = 'CameraRollDomain' AND relativePath LIKE '%Media/DCIM%'"
-
-    MAX = 500000000000
-    i = 0
-    for subfile, _, relpath, _, blob in conn.cursor().execute(query):
-        # files are stored in subdirectories, that match first 2 characters of their names
-        subdir = subfile[:2]
-
-        relpath = removePrefix(relpath, "Media/DCIM/")
-        relpath = removePrefix(relpath, "100APPLE/")
-
-        # abspath will normalize path separators (windows uses reverse slashes, but relpath has forward ones)
-        # doing it on sourceFile is not really necessary, but won't hurt
-        sourceFile = os.path.abspath(os.path.join(backup_dir, subdir, subfile))
-        destFile = os.path.abspath(os.path.join(out_dir, relpath))
-
-        if os.path.isfile(sourceFile):
+        originalFilename = None
+        if "$objects" in parsed and len(parsed["$objects"]) >= 4:
+            blobInside = parsed["$objects"][3]
+            parsedInside = None
             try:
-                processFile(sourceFile, destFile, blob, dryRun)
+                readerInside = BPListReader(blobInside)
+                parsedInside = readerInside.parse()
+                print(parsedInside) #debug
             except Exception as e:
-                print(e, '\n')
-            i += 1
+                #print("File '", destFile, "' error in originalFilename attributes: ", e)
+                pass
+            if parsedInside != None and "com.apple.assetsd.originalFilename" in parsedInside:
+                originalFilename = parsedInside["com.apple.assetsd.originalFilename"]
+                originalFilename = originalFilename.decode("utf-8")   #It comes as a binary string.
 
-        if i == MAX:
+        if originalFilename != None and (isFilename_IMG_NNNN(originalFilename) or isFilename_Guid(originalFilename)):
+            originalFilename = None
+
+        #if originalFilename == None:  #debug
+        #    return
+        #print("ORIGINAL FILENAME: ", originalFilename) #debug
+
+        if originalFilename != None:
+            p = pathlib.Path(destFile)
+            destDir = str(p.parent)
+
+            #Replace IMG_NNNN with originalFilename
+            destFile = os.path.join(destDir, originalFilename)
+        else:
+            #Rewrite filename using the MTIME date:
+            if lastModified != None:
+                suffix = datetime.fromtimestamp(lastModified).strftime("%Y%m%d_%H%M%S")
+
+                p = pathlib.Path(destFile)
+                extension = p.suffix
+                name = p.stem
+                destDir = str(p.parent)
+
+                if name.startswith("IMG_"):
+                    name = "IMG_" + suffix
+
+                #Replace IMG_ with VID_ in videos:
+                if extension.lower() == ".mov":
+                    if name.startswith("IMG_"):
+                        name = "VID_" + name[4:]
+
+                destFile = os.path.join(destDir, name + extension)
+
+        #Add _1 or _2 to filenames that have the same lastModified in seconds or the same originalFilename
+        if destFile in self.existingFilenamesMap:
+            p = pathlib.Path(destFile)
+            extension = p.suffix
+            name = p.stem
+            destDir = str(p.parent)
+            #Retry while the destFile already exists:
+            n = 1
+            while destFile in self.existingFilenamesMap:
+                destFile = os.path.join(destDir, name + "_" + str(n) + extension)
+                n += 1
+        self.existingFilenamesMap[destFile] = sourceFile
+
+        #Show source and dest:
+        print(sourceFile, "->", destFile)
+        if self.dryRun:
             return
 
+        dirName = os.path.dirname(destFile)
+        #Create intermediate dirs:
+        if not os.path.exists(dirName):
+            try:
+                os.makedirs(dirName)
+            except OSError as exc: # Guard against race condition
+                if exc.errno != errno.EEXIST:
+                    raise
+        #Hardlink:
+        try:
+            os.link(sourceFile, destFile)
+        except FileExistsError:
+            print("File exists")
+            pass
+        #Set MTIME:
+        if lastModified != None:
+            os.utime(destFile, (lastModified, lastModified))
 
 
 def main():
@@ -115,7 +190,8 @@ def main():
 
     args = parser.parse_args()
 
-    extractHardlinks(args.backup_dir, args.out_dir, args.pretend)
+    matic = IPhoneMatic(args.backup_dir, args.out_dir, args.pretend)
+    matic.extractHardlinks("Camera", "%Media/DCIM%")
 
 
 
