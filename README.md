@@ -16,6 +16,15 @@ The Apple Devices app doesn't let you change the destination directory. I was go
 
              mklink /J "C:\Users\YourUser\Apple\MobileSync\Backup" "F:\Backup"
 
+Example run:
+
+    user1@machine1:/media/veracrypt1$ ./iphoneMatic.py Backup/00008110-001A18D40EFB801E/ DCIM/
+    /media/veracrypt1/Backup/00008110-001A18D40EFB801E/5c/5cbc273a62c27bf11d657c0b2994c496d4cfdf26 -> /media/veracrypt1/DCIM/VID_20250801_100420.MOV
+    /media/veracrypt1/Backup/00008110-001A18D40EFB801E/9e/9ed1c1ae594513c0f9696fb435888c8c6935cf15 -> /media/veracrypt1/DCIM/IMG_20250714_175224.HEIC
+    /media/veracrypt1/Backup/00008110-001A18D40EFB801E/f6/f685f2ae9e4c54a5178423aa25b100bebfa6ce34 -> /media/veracrypt1/DCIM/IMG_20250725_144243.HEIC
+    [..]
+
+
 Good Luck!
 
 --jm
