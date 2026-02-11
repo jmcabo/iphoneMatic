@@ -15,8 +15,12 @@ The source directory must be the one that contains the file Manifest.db, which i
 The Apple Devices app doesn't let you change the destination directory. I was going to run out of space in C:\ and needed to place it in a USB drive. Preferably inside a veracrypt container mounted in F:. No problem, a junction can be created so that the Apple Devices app always backs up to F:\Backup:
 
              mklink /J "C:\Users\YourUser\Apple\MobileSync\Backup" "F:\Backup"
+             
+Example command line (Windows):
 
-Example run:
+            python3 iphoneMatic.py F:\\Backup\\00008110-001A18D40EFB801E F:\\DCIM"
+
+Example run (Linux):
 
     user1@machine1:/media/veracrypt1$ ./iphoneMatic.py Backup/00008110-001A18D40EFB801E/ DCIM/
     /media/veracrypt1/Backup/00008110-001A18D40EFB801E/5c/5cbc273a62c27bf11d657c0b2994c496d4cfdf26 -> /media/veracrypt1/DCIM/VID_20250801_100420.MOV
