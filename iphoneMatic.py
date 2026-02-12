@@ -26,19 +26,19 @@ def isFilename_Guid(s):
 
 
 class IPhoneMatic:
-    def __init__(self, backup_dir, out_dir, dryRun, numericNames):
+    def __init__(self, backup_dir, out_dir, dryRun, preserveNames):
         self.backup_dir = backup_dir
         self.out_dir = out_dir
         self.dryRun = dryRun
-        self.numericNames = numericNames
+        self.preserveNames = preserveNames
         self.existingFilenamesMap = {}
 
-    def extractHardlinks(self, subdir, pathFilter):
+    def extractHardlinks(self, subdir, domainFilter, pathFilter, typeStr="TypeNormal"):
         conn = sqlite3.connect(os.path.join(self.backup_dir, 'Manifest.db'))
 
         # simple query to get only media (without thumbnails)
         query = "SELECT fileId, domain, relativePath, flags, file FROM Files " \
-                + "WHERE domain = 'CameraRollDomain' AND relativePath LIKE '" + pathFilter + "' " \
+                + "WHERE domain = '" + domainFilter + "' AND relativePath LIKE '" + pathFilter + "' " \
                 + "ORDER BY relativePath"
 
         MAX = 500000000000
@@ -49,6 +49,23 @@ class IPhoneMatic:
 
             relpath = removePrefix(relpath, "Media/DCIM/")
             relpath = removePrefix(relpath, "100APPLE/")
+            relpath = removePrefix(relpath, "Media/PhotoData/Thumbnails/V2/PhotoData/Sync/100SYNCD/")
+            relpath = removePrefix(relpath, "Media/PhotoData/Metadata/PhotoData/Sync/100SYNCD/")
+            relpath = removePrefix(relpath, "Media/Profile/")
+            relpath = removePrefix(relpath, "File Provider Storage/")
+
+            if typeStr == "TypeWhatsapp":
+                #Remove parent dirs:
+                p = pathlib.Path(relpath)
+                extension = p.suffix
+                name = p.stem
+                relpath = name + extension
+                #Skip thumbnails:
+                if extension == ".thumb" or extension == ".favicon" or extension == ".mmsthumb":
+                    continue
+                #Skip stickers:
+                if extension == ".webp":
+                    continue
 
             # abspath will normalize path separators (windows uses reverse slashes, but relpath has forward ones)
             # doing it on sourceFile is not really necessary, but won't hurt
@@ -60,7 +77,7 @@ class IPhoneMatic:
 
             if os.path.isfile(sourceFile):
                 try:
-                    self.processFile(sourceFile, destFile, blob)
+                    self.processFile(sourceFile, destFile, blob, typeStr)
                 except Exception as e:
                     print("ERROR processing file", destFile, ": ", e, '\n')
                 i += 1
@@ -68,7 +85,8 @@ class IPhoneMatic:
             if i == MAX:
                 return
 
-    def processFile(self, sourceFile, destFile, blob):
+
+    def processFile(self, sourceFile, destFile, blob, typeStr):
         lastModified = None
         fileSize = None
         parsed = {}
@@ -113,7 +131,7 @@ class IPhoneMatic:
         #    return
         #print("ORIGINAL FILENAME: ", originalFilename) #debug
 
-        if not self.numericNames:
+        if not self.preserveNames and typeStr != "TypeApp":
             if originalFilename != None:
                 p = pathlib.Path(destFile)
                 destDir = str(p.parent)
@@ -130,11 +148,12 @@ class IPhoneMatic:
                     name = p.stem
                     destDir = str(p.parent)
 
-                    if name.startswith("IMG_"):
+                    if name.startswith("IMG_") or typeStr == "TypeWhatsapp":
                         name = "IMG_" + suffix
 
                     #Replace IMG_ with VID_ in videos:
-                    if extension.lower() == ".mov":
+                    extlower = extension.lower()
+                    if extlower == ".mov" or extlower == ".mp4":
                         if name.startswith("IMG_"):
                             name = "VID_" + name[4:]
 
@@ -193,7 +212,14 @@ def main():
     args = parser.parse_args()
 
     matic = IPhoneMatic(args.backup_dir, args.out_dir, args.pretend, args.numeric)
-    matic.extractHardlinks("Camera", "%Media/DCIM%")
+    matic.extractHardlinks("Camera", "CameraRollDomain", "%Media/DCIM%")
+    #Some Thumbnails: matic.extractHardlinks("FromMac", "CameraRollDomain", "%Media/PhotoData/Thumbnails/V2/PhotoData/Sync/100SYNCD/%")
+    #More Thumbnails: matic.extractHardlinks("Thumbnails", "CameraRollDomain", "%Media/PhotoData/Metadata/PhotoData/Sync/100SYNCD/%")
+    matic.extractHardlinks("WhatsappProfilePictures", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Media/Profile/%jpg")
+    matic.extractHardlinks("Whatsapp", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Message/Media%", "TypeWhatsapp")
+    matic.extractHardlinks("FTPManager", "AppDomainGroup-group.com.skyjos.ftpmanager", "%", "TypeApp")
+    matic.extractHardlinks("Files", "AppDomainGroup-group.com.apple.FileProvider.LocalStorage", "%", "TypeApp")
+    matic.extractHardlinks("FilesHome", "HomeDomain", "%", "TypeApp")
 
 
 
