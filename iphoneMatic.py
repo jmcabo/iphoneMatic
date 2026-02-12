@@ -26,10 +26,11 @@ def isFilename_Guid(s):
 
 
 class IPhoneMatic:
-    def __init__(self, backup_dir, out_dir, dryRun):
+    def __init__(self, backup_dir, out_dir, dryRun, numericNames):
         self.backup_dir = backup_dir
         self.out_dir = out_dir
         self.dryRun = dryRun
+        self.numericNames = numericNames
         self.existingFilenamesMap = {}
 
     def extractHardlinks(self, subdir, pathFilter):
@@ -75,7 +76,6 @@ class IPhoneMatic:
             reader = BPListReader(blob)
             parsed = reader.parse()
             #print(parsed)
-            print(parsed)  #debug
         except:
             print("Error reading: ", destFile, " with GUID ", os.path.basename(sourceFile))
 
@@ -98,7 +98,7 @@ class IPhoneMatic:
             try:
                 readerInside = BPListReader(blobInside)
                 parsedInside = readerInside.parse()
-                print(parsedInside) #debug
+                #print(parsedInside) #debug
             except Exception as e:
                 #print("File '", destFile, "' error in originalFilename attributes: ", e)
                 pass
@@ -113,31 +113,32 @@ class IPhoneMatic:
         #    return
         #print("ORIGINAL FILENAME: ", originalFilename) #debug
 
-        if originalFilename != None:
-            p = pathlib.Path(destFile)
-            destDir = str(p.parent)
-
-            #Replace IMG_NNNN with originalFilename
-            destFile = os.path.join(destDir, originalFilename)
-        else:
-            #Rewrite filename using the MTIME date:
-            if lastModified != None:
-                suffix = datetime.fromtimestamp(lastModified).strftime("%Y%m%d_%H%M%S")
-
+        if not self.numericNames:
+            if originalFilename != None:
                 p = pathlib.Path(destFile)
-                extension = p.suffix
-                name = p.stem
                 destDir = str(p.parent)
 
-                if name.startswith("IMG_"):
-                    name = "IMG_" + suffix
+                #Replace IMG_NNNN with originalFilename
+                destFile = os.path.join(destDir, originalFilename)
+            else:
+                #Rewrite filename using the MTIME date:
+                if lastModified != None:
+                    suffix = datetime.fromtimestamp(lastModified).strftime("%Y%m%d_%H%M%S")
 
-                #Replace IMG_ with VID_ in videos:
-                if extension.lower() == ".mov":
+                    p = pathlib.Path(destFile)
+                    extension = p.suffix
+                    name = p.stem
+                    destDir = str(p.parent)
+
                     if name.startswith("IMG_"):
-                        name = "VID_" + name[4:]
+                        name = "IMG_" + suffix
 
-                destFile = os.path.join(destDir, name + extension)
+                    #Replace IMG_ with VID_ in videos:
+                    if extension.lower() == ".mov":
+                        if name.startswith("IMG_"):
+                            name = "VID_" + name[4:]
+
+                    destFile = os.path.join(destDir, name + extension)
 
         #Add _1 or _2 to filenames that have the same lastModified in seconds or the same originalFilename
         if destFile in self.existingFilenamesMap:
@@ -187,10 +188,11 @@ def main():
     parser.add_argument('out_dir', help='Destination directory, relative to which ' \
                         'files would be copied, according to original directory structure')
     parser.add_argument('-n', '--pretend', action='store_true', help="Print source and dest but don't create hardlinks")
+    parser.add_argument('-u', '--numeric', action='store_true', help="Use IMG_NNNN.JPG instead of IMG_YYYYmmdd_HHMMSS.JPG")
 
     args = parser.parse_args()
 
-    matic = IPhoneMatic(args.backup_dir, args.out_dir, args.pretend)
+    matic = IPhoneMatic(args.backup_dir, args.out_dir, args.pretend, args.numeric)
     matic.extractHardlinks("Camera", "%Media/DCIM%")
 
 
