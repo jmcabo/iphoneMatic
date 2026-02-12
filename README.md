@@ -18,7 +18,12 @@ The Apple Devices app doesn't let you change the destination directory. I was go
              
 Example command line (Windows):
 
-            python3 iphoneMatic.py F:\Backup\00008110-001A18D40EFB801E F:\DCIM
+            F:\> python3 iphoneMatic.py F:\Backup\00008110-001A18D40EFB801E F:\DCIM
+            f:\Backup\00008110-001A18D40EFB801E\14\14c9249d327cc25cd03cc7682175dfac56f79268 -> F:\DCIM\Camera\IMG_20250711_220111.PNG
+            f:\Backup\00008110-001A18D40EFB801E\2e\2e3db5790e3b8c09ddb470ffa49573fc58eaf764 -> F:\DCIM\Camera\IMG_20250713_181255.HEIC
+            f:\Backup\00008110-001A18D40EFB801E\e4\e40948bc14f5da406e0c667721eeac811df1ec3d -> F:\DCIM\Camera\VID_20250713_180244.MOV
+            f:\Backup\00008110-001A18D40EFB801E\06\06d624a45988c5177d0cca2902868f24e2d459ad -> F:\DCIM\Camera\IMG_20250714_083054.JPG
+            [..]
 
 Example run (Linux):
 
