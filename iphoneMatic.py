@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #iphoneMatic 0.9 - by JMC - Based on https://github.com/alexisrozhkov/extract_media_from_backup/ and https://github.com/farcaller/bplist-python/
 #Created: 2026-02-11
-#Updated: 2026-02-11
+#Updated: 2026-02-13
 import os
 import shutil
 import sqlite3
@@ -45,6 +45,20 @@ def formatNames(first, middle, last):
         s += last
     return s
 
+def writeToFile(filename, content):
+    print("Writing to", filename)
+    try:
+        with open(filename, 'w', encoding='utf-8') as file:
+            file.write(content)
+    except Exception as e:
+        print("Error writing note file: ", e)
+
+def ensureDirs(dirs):
+    try:
+        os.makedirs(dirs)
+    except OSError as exc: # Guard against race condition
+        if exc.errno != errno.EEXIST:
+            raise
 
 class IPhoneMatic:
     def __init__(self, backup_dir, out_dir, dryRun, preserveNames):
@@ -206,11 +220,7 @@ class IPhoneMatic:
             dirName = os.path.dirname(destFile)
             #Create intermediate dirs:
             if not os.path.exists(dirName):
-                try:
-                    os.makedirs(dirName)
-                except OSError as exc: # Guard against race condition
-                    if exc.errno != errno.EEXIST:
-                        raise
+                ensureDirs(dirName)
             #Hardlink:
             try:
                 os.link(sourceFile, destFile)
@@ -222,11 +232,11 @@ class IPhoneMatic:
                 os.utime(destFile, (lastModified, lastModified))
 
 
-    def extractContactsVCF(self, contactsDbFilename):
+    def extractContactsVCF(self, contactsDbFilename, vcfFilename):
         conn = sqlite3.connect(contactsDbFilename)
 
         query = "SELECT p.ROWID, m.label, m.property, m.value, e.value, p.First, p.Middle, p.Last, " \
-                + "     datetime(p.Birthday + 978307200, 'unixepoch', 'localtime') " \
+                + "     datetime(p.Birthday + 978307200, 'unixepoch', 'localtime'), p.Birthday " \
                 + "FROM ABMultiValue m " \
                 + "INNER JOIN ABPerson p ON m.record_id = p.ROWID " \
                 + "LEFT JOIN ABMultiValueEntry e ON e.parent_id = m.UID " \
@@ -235,7 +245,7 @@ class IPhoneMatic:
 
         personsById = {}
         for personId, label, propertyType, value, \
-            addressValue, first, middle, last, birthday \
+            addressValue, first, middle, last, birthdayStr, birthday \
             in conn.cursor().execute(query):
             #print(formatNames(first, middle, last))
             person = {}
@@ -247,8 +257,9 @@ class IPhoneMatic:
                           "first": first, "middle": middle, "last": last,
                           "phones": [], "emails": [], "addresses": [],
                           "birthday": ""}
-                if birthday != None:
-                    person["birthday"] = birthday
+                if birthday != None and birthday != "":
+                    birthdayFormatted = datetime.fromtimestamp(float(birthday) + 978307200).strftime("%Y-%m-%d")
+                    person["birthday"] = birthdayFormatted
                 personsById[personId] = person
             if propertyType == PropertyType.PHONE.value:
                 person["phones"].append(value)
@@ -257,9 +268,35 @@ class IPhoneMatic:
             elif propertyType == PropertyType.ADDRESS.value:
                 person["addresses"].append(addressValue)
 
+        vcf = ""
         for personId, person in personsById.items():
-            print(person)
-            pass
+            vcf += "BEGIN:VCARD\n"
+            vcf += "VERSION:2.1\n"
+            #debug: escape newlines and others.
+            #debug: acentos
+            vcf += "FN:" + person["name"] + "\n"
+            vcf += "N:" \
+                + (person["last"] if person["last"] != None else "") \
+                + ";" \
+                + (person["first"] if person["first"] != None else "") \
+                + ";"  \
+                + (person["middle"] if person["middle"] != None else "") \
+                + ";" \
+                + ";" + "\n"
+            for phone in person["phones"]:
+                #debug: phone type
+                vcf += "TEL;CELL:" + phone + "\n"
+            for email in person["emails"]:
+                #debug: email type
+                vcf += "EMAIL;HOME:" + email + "\n"
+            for address in person["addresses"]:
+                #debug: multiline addresses?
+                vcf += "ADR;HOME:;;" + address + ";;;;\n"
+            if person["birthday"] != "":
+                vcf += "BDAY:" + person["birthday"] + "\n"
+            vcf += "END:VCARD\n"
+        print(vcf)
+        writeToFile(vcfFilename, vcf)
 
 
 
@@ -293,20 +330,19 @@ def main():
 
     #Export notes:
     destNotesDir = os.path.join(args.out_dir, "Notes")
-    try:
-        os.makedirs(destNotesDir)
-    except OSError as exc:
-        if exc.errno != errno.EEXIST:
-            raise
-    #debug: ToDo: detect script dir and append to readnotes path:
+    ensureDirs(destNotesDir)
     os.system("python3 -B readnotes/readnotes.py  --user all --input \"" \
             + os.path.join(args.out_dir, "FilesAppGroups/group.com.apple.notes/NoteStore.sqlite") \
             + "\" --output \"" + destNotesDir + "\"")
 
     #Export contacts
     contactsDbFilename = os.path.join(args.out_dir, "FilesHome/Library/AddressBook/AddressBook.sqlitedb")
+    vcfDir = os.path.join(args.out_dir, "Contacts")
+    ensureDirs(vcfDir)
+    suffixDate = datetime.fromtimestamp(os.path.getmtime(contactsDbFilename)).strftime("%Y-%m-%d")
+    vcfFilename = os.path.join(vcfDir, "contacts_" + suffixDate + ".vcf")
     if (os.path.isfile(contactsDbFilename)):
-        matic.extractContactsVCF(contactsDbFilename)
+        matic.extractContactsVCF(contactsDbFilename, vcfFilename)
 
 
 
