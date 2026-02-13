@@ -8,9 +8,17 @@ import sqlite3
 import argparse
 import pathlib
 import re
+import errno
+from enum import Enum
 from datetime import datetime
 from argparse import RawTextHelpFormatter
 from bplist import BPListReader
+
+
+class PropertyType(Enum):
+    PHONE = 3
+    EMAIL = 4
+    ADDRESS = 5
 
 def removePrefix(s, prefix):
     if s.startswith(prefix):
@@ -23,6 +31,19 @@ def isFilename_IMG_NNNN(s):
 def isFilename_Guid(s):
     return re.match(r'[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}', s) != None
 
+def formatNames(first, middle, last):
+    s = ""
+    if first != None:
+        s += first
+    if middle != None:
+        if s != "":
+           s += " "
+        s += middle
+    if last != None:
+        if s != "":
+            s += " "
+        s += last
+    return s
 
 
 class IPhoneMatic:
@@ -38,12 +59,12 @@ class IPhoneMatic:
 
         # simple query to get only media (without thumbnails)
         query = "SELECT fileId, domain, relativePath, flags, file FROM Files " \
-                + "WHERE domain = '" + domainFilter + "' AND relativePath LIKE '" + pathFilter + "' " \
+                + "WHERE domain LIKE '" + domainFilter + "' AND relativePath LIKE '" + pathFilter + "' " \
                 + "ORDER BY relativePath"
 
         MAX = 500000000000
         i = 0
-        for subfile, _, relpath, _, blob in conn.cursor().execute(query):
+        for subfile, domain, relpath, _, blob in conn.cursor().execute(query):
             # files are stored in subdirectories, that match first 2 characters of their names
             sourceSubdir = subfile[:2]
 
@@ -66,6 +87,10 @@ class IPhoneMatic:
                 #Skip stickers:
                 if extension == ".webp":
                     continue
+
+            if typeStr == 'TypeAppGroup':
+                domain = removePrefix(domain, "AppDomainGroup-")
+                relpath = os.path.join(domain, relpath)
 
             # abspath will normalize path separators (windows uses reverse slashes, but relpath has forward ones)
             # doing it on sourceFile is not really necessary, but won't hurt
@@ -172,28 +197,72 @@ class IPhoneMatic:
                 n += 1
         self.existingFilenamesMap[destFile] = sourceFile
 
-        #Show source and dest:
-        print(sourceFile, "->", destFile)
-        if self.dryRun:
-            return
+        if not os.path.isfile(destFile):
+            #Show source and dest:
+            print(sourceFile, "->", destFile)
+            if self.dryRun:
+                return
 
-        dirName = os.path.dirname(destFile)
-        #Create intermediate dirs:
-        if not os.path.exists(dirName):
+            dirName = os.path.dirname(destFile)
+            #Create intermediate dirs:
+            if not os.path.exists(dirName):
+                try:
+                    os.makedirs(dirName)
+                except OSError as exc: # Guard against race condition
+                    if exc.errno != errno.EEXIST:
+                        raise
+            #Hardlink:
             try:
-                os.makedirs(dirName)
-            except OSError as exc: # Guard against race condition
-                if exc.errno != errno.EEXIST:
-                    raise
-        #Hardlink:
-        try:
-            os.link(sourceFile, destFile)
-        except FileExistsError:
-            print("File exists")
+                os.link(sourceFile, destFile)
+            except FileExistsError:
+                print("File exists")
+                pass
+            #Set MTIME:
+            if lastModified != None:
+                os.utime(destFile, (lastModified, lastModified))
+
+
+    def extractContactsVCF(self, contactsDbFilename):
+        conn = sqlite3.connect(contactsDbFilename)
+
+        query = "SELECT p.ROWID, m.label, m.property, m.value, e.value, p.First, p.Middle, p.Last, " \
+                + "     datetime(p.Birthday + 978307200, 'unixepoch', 'localtime') " \
+                + "FROM ABMultiValue m " \
+                + "INNER JOIN ABPerson p ON m.record_id = p.ROWID " \
+                + "LEFT JOIN ABMultiValueEntry e ON e.parent_id = m.UID " \
+                + "WHERE m.property != 76 and m.property != 46 " \
+                + "ORDER BY p.ROWID ASC, m.UID ASC"
+
+        personsById = {}
+        for personId, label, propertyType, value, \
+            addressValue, first, middle, last, birthday \
+            in conn.cursor().execute(query):
+            #print(formatNames(first, middle, last))
+            person = {}
+            if personId in personsById:
+                person = personsById[personId]
+            else:
+                person = {"personId": personId,
+                          "name": formatNames(first, middle, last),
+                          "first": first, "middle": middle, "last": last,
+                          "phones": [], "emails": [], "addresses": [],
+                          "birthday": ""}
+                if birthday != None:
+                    person["birthday"] = birthday
+                personsById[personId] = person
+            if propertyType == PropertyType.PHONE.value:
+                person["phones"].append(value)
+            elif propertyType == PropertyType.EMAIL.value:
+                person["emails"].append(value)
+            elif propertyType == PropertyType.ADDRESS.value:
+                person["addresses"].append(addressValue)
+
+        for personId, person in personsById.items():
+            print(person)
             pass
-        #Set MTIME:
-        if lastModified != None:
-            os.utime(destFile, (lastModified, lastModified))
+
+
+
 
 
 def main():
@@ -220,6 +289,25 @@ def main():
     matic.extractHardlinks("FTPManager", "AppDomainGroup-group.com.skyjos.ftpmanager", "%", "TypeApp")
     matic.extractHardlinks("Files", "AppDomainGroup-group.com.apple.FileProvider.LocalStorage", "%", "TypeApp")
     matic.extractHardlinks("FilesHome", "HomeDomain", "%", "TypeApp")
+    matic.extractHardlinks("FilesAppGroups", "AppDomainGroup-%", "%", "TypeAppGroup")
+
+    #Export notes:
+    destNotesDir = os.path.join(args.out_dir, "Notes")
+    try:
+        os.makedirs(destNotesDir)
+    except OSError as exc:
+        if exc.errno != errno.EEXIST:
+            raise
+    #debug: ToDo: detect script dir and append to readnotes path:
+    os.system("python3 -B readnotes/readnotes.py  --user all --input \"" \
+            + os.path.join(args.out_dir, "FilesAppGroups/group.com.apple.notes/NoteStore.sqlite") \
+            + "\" --output \"" + destNotesDir + "\"")
+
+    #Export contacts
+    contactsDbFilename = os.path.join(args.out_dir, "FilesHome/Library/AddressBook/AddressBook.sqlitedb")
+    if (os.path.isfile(contactsDbFilename)):
+        matic.extractContactsVCF(contactsDbFilename)
+
 
 
 
