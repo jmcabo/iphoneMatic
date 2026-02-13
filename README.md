@@ -38,6 +38,24 @@ Good Luck!
 
 --jm
 
+Installation notes:
+
+     The script doesn't require extra modules to do the image extraction to hardlinks.
+     But to do the Notes exporting, the following modules are required:
+     
+           pip install bs4
+           pip install pytz           
+           pip install biplist
+
+      in ubuntu linux one can do:
+
+           apt-get install  python3-biplist  python3-bs4
+
+    Alternatively one can edit iphoneMatic.py to comment exportNotes() and so those python modules are not required.
+
+           #Export notes:
+           # matic.exportNotes()
+
 Appendix 1: To view HEIC files natively in Windows, a codec is necessary. Microsoft charges $1 for the codec at:
 
       https://apps.microsoft.com/detail/9nmzlz57r3t7
