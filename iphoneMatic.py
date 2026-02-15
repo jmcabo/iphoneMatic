@@ -284,7 +284,7 @@ class IPhoneMatic:
                 + ";" \
                 + ";" + "\n"
             for phone in person["phones"]:
-                #debug: phone type
+                #debug: phone type: CELL, HOME, WORK, etc.
                 vcf += "TEL;CELL:" + phone + "\n"
             for email in person["emails"]:
                 #debug: email type
@@ -295,8 +295,31 @@ class IPhoneMatic:
             if person["birthday"] != "":
                 vcf += "BDAY:" + person["birthday"] + "\n"
             vcf += "END:VCARD\n"
-        print(vcf)
+        #print(vcf)
         writeToFile(vcfFilename, vcf)
+
+    def exportNotes(self):
+        notesDbFilename = os.path.join(self.out_dir, "FilesAppGroups/group.com.apple.notes/NoteStore.sqlite")
+        if not os.path.isfile(notesDbFilename):
+            print("WARNING: NoteStore.sqlite not found. Notes will not be exported")
+            return
+        destNotesDir = os.path.join(self.out_dir, "Notes")
+        ensureDirs(destNotesDir)
+        os.system("python3 -B readnotes/readnotes.py  --user all --input \"" \
+                + notesDbFilename \
+                + "\" --output \"" + destNotesDir + "\"")
+
+    def exportContacts(self):
+        contactsDbFilename = os.path.join(self.out_dir, "FilesHome/Library/AddressBook/AddressBook.sqlitedb")
+        if not os.path.isfile(contactsDbFilename):
+            print("WARNING: AddressBook.sqlite not found. Contacts will not be exported")
+            return
+        vcfDir = os.path.join(self.out_dir, "Contacts")
+        ensureDirs(vcfDir)
+        suffixDate = datetime.fromtimestamp(os.path.getmtime(contactsDbFilename)).strftime("%Y-%m-%d")
+        vcfFilename = os.path.join(vcfDir, "contacts_" + suffixDate + ".vcf")
+        if (os.path.isfile(contactsDbFilename)):
+            matic.extractContactsVCF(contactsDbFilename, vcfFilename)
 
 
 
@@ -317,32 +340,23 @@ def main():
 
     args = parser.parse_args()
 
+
     matic = IPhoneMatic(args.backup_dir, args.out_dir, args.pretend, args.numeric)
     matic.extractHardlinks("Camera", "CameraRollDomain", "%Media/DCIM%")
-    #Some Thumbnails: matic.extractHardlinks("FromMac", "CameraRollDomain", "%Media/PhotoData/Thumbnails/V2/PhotoData/Sync/100SYNCD/%")
-    #More Thumbnails: matic.extractHardlinks("Thumbnails", "CameraRollDomain", "%Media/PhotoData/Metadata/PhotoData/Sync/100SYNCD/%")
+    #Some Thumbnails: 
+    #    matic.extractHardlinks("FromMac", "CameraRollDomain", "%Media/PhotoData/Thumbnails/V2/PhotoData/Sync/100SYNCD/%")
+    #More Thumbnails: 
+    #    matic.extractHardlinks("Thumbnails", "CameraRollDomain", "%Media/PhotoData/Metadata/PhotoData/Sync/100SYNCD/%")
     matic.extractHardlinks("WhatsappProfilePictures", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Media/Profile/%jpg")
     matic.extractHardlinks("Whatsapp", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Message/Media%", "TypeWhatsapp")
     matic.extractHardlinks("FTPManager", "AppDomainGroup-group.com.skyjos.ftpmanager", "%", "TypeApp")
     matic.extractHardlinks("Files", "AppDomainGroup-group.com.apple.FileProvider.LocalStorage", "%", "TypeApp")
     matic.extractHardlinks("FilesHome", "HomeDomain", "%", "TypeApp")
     matic.extractHardlinks("FilesAppGroups", "AppDomainGroup-%", "%", "TypeAppGroup")
-
     #Export notes:
-    destNotesDir = os.path.join(args.out_dir, "Notes")
-    ensureDirs(destNotesDir)
-    os.system("python3 -B readnotes/readnotes.py  --user all --input \"" \
-            + os.path.join(args.out_dir, "FilesAppGroups/group.com.apple.notes/NoteStore.sqlite") \
-            + "\" --output \"" + destNotesDir + "\"")
-
+    matic.exportNotes()
     #Export contacts
-    contactsDbFilename = os.path.join(args.out_dir, "FilesHome/Library/AddressBook/AddressBook.sqlitedb")
-    vcfDir = os.path.join(args.out_dir, "Contacts")
-    ensureDirs(vcfDir)
-    suffixDate = datetime.fromtimestamp(os.path.getmtime(contactsDbFilename)).strftime("%Y-%m-%d")
-    vcfFilename = os.path.join(vcfDir, "contacts_" + suffixDate + ".vcf")
-    if (os.path.isfile(contactsDbFilename)):
-        matic.extractContactsVCF(contactsDbFilename, vcfFilename)
+    matic.exportContacts()
 
 
 
