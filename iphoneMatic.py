@@ -82,12 +82,13 @@ class IPhoneMatic:
 
         # simple query to get only media (without thumbnails)
         query = "SELECT fileId, domain, relativePath, flags, file FROM Files " \
-                + "WHERE domain LIKE '" + domainFilter + "' AND relativePath LIKE '" + pathFilter + "' " \
+                + "WHERE domain LIKE :domainFilter AND relativePath LIKE :pathFilter " \
                 + "ORDER BY relativePath"
 
         MAX = 500000000000
         i = 0
-        for subfile, domain, relpath, _, blob in conn.cursor().execute(query):
+        r = conn.cursor().execute(query, {"domainFilter": domainFilter, "pathFilter": pathFilter})
+        for subfile, domain, relpath, _, blob in r:
             # files are stored in subdirectories, that match first 2 characters of their names
             sourceSubdir = subfile[:2]
 
@@ -307,11 +308,127 @@ class IPhoneMatic:
         #print(vcf)
         writeToFile(vcfFilename, vcf)
 
+    def extractWhatsappChatsFromDb(self, whatsappDbFilename, whatsappContactsDbFilename, chatsDir):
+        WHATSAPP_ADS_ID = "status@broadcast"
+
+        #Parse contacts:
+        contactsByLId = {}
+        contactsByJId = {}
+        if os.path.isfile(whatsappContactsDbFilename):
+            conn = sqlite3.connect(whatsappContactsDbFilename)
+
+            query = "SELECT Z_PK, ZFULLNAME, ZBUSINESSNAME, ZPHONENUMBER, ZLID, ZWHATSAPPID " \
+                    + "FROM ZWAADDRESSBOOKCONTACT;"
+
+            for contactId, fullname, businessName, phoneNumber, lid, jid in conn.cursor().execute(query):
+                contact = {"contactId": contactId,
+                           "fullname": fullname,
+                           "businessName": businessName,
+                           "phoneNumber": phoneNumber,
+                           "lid": lid,
+                           "jid": jid}
+                contactsByLId[lid] = contact
+                contactsByJId[jid] = contact
+
+
+        #Assign filename for chat, don't overwrite if they are called the same. Sort by Id.
+        existingChatFilenames = {}
+
+        conn = sqlite3.connect(whatsappDbFilename)
+
+        query = "SELECT c.ZPARTNERNAME, c.ZLASTMESSAGEDATE, c.ZCONTACTIDENTIFIER AS chat_lid, ZCONTACTJID AS chat_jid " \
+                + "FROM ZWACHATSESSION c " \
+                + "WHERE c.ZLASTMESSAGEDATE NOT NULL " \
+                + "ORDER BY c.Z_PK ASC"
+
+        for chatName, lastMessageDate, chatLid, chatJid in conn.cursor().execute(query):
+
+            query = "SELECT c.ZPARTNERNAME, t.ZPARTNERNAME, m.ZTEXT, m.ZMESSAGEDATE, m.ZCHATSESSION, m.ZGROUPMEMBER, " \
+                    + "g.ZMEMBERJID " \
+                    + "FROM ZWAMESSAGE m " \
+                    + "LEFT JOIN ZWACHATSESSION c ON c.ZCONTACTJID = m.ZFROMJID " \
+                    + "LEFT JOIN ZWACHATSESSION t ON t.ZCONTACTJID = m.ZTOJID " \
+                    + "LEFT JOIN ZWAGROUPMEMBER g ON g.Z_PK = m.ZGROUPMEMBER " \
+                    + "WHERE m.ZFROMJID = :chatJid " \
+                    + "      OR m.ZTOJID = :chatJid "
+
+            r = conn.cursor().execute(query, {"chatJid": chatJid})
+
+            chatFilename = os.path.join(chatsDir, chatName + ".txt")
+            #debug: encode filename
+            chatFilename = chatFilename.replace(":", "_")
+            chatFilename = chatFilename.replace("…", "_")
+            chatFilename = chatFilename.replace("+", "_")
+
+            #Add _1 or _2 to filenames that have the same name:
+            if chatFilename in existingChatFilenames:
+                p = pathlib.Path(chatFilename)
+                extension = p.suffix
+                name = p.stem
+                destDir = str(p.parent)
+                #Retry while the chatFilename already exists:
+                n = 1
+                while chatFilename in existingChatFilenames:
+                    chatFilename = os.path.join(chatsDir, name + "_" + str(n) + extension)
+                    n += 1
+            existingChatFilenames[chatFilename] = 1
+
+            #debug: ToDo:
+            #    -group member names
+            #    -links (insta, etc.)
+            #        -insta caption
+            #    -skip Whatsapp chat(?)
+            #    -empty chat name ".txt"
+            #    -escape filenames
+            #    -<200e> en filenames
+            #    -media items (image filename?)
+
+            #Process messages:
+            content = ""
+            for fromName, toName, text, messageDate, chatSession, groupMemberPk, groupMemberJid in r:
+                dateStr = datetime.fromtimestamp(float(messageDate) + 978307200).strftime("%Y-%m-%d %H:%M:%S")
+                nameStr = "<" + fromName + ">" if fromName != None else "<me>"
+                if groupMemberPk != None and groupMemberJid != None:
+                    #Resolve group member name:
+                    try:
+                        print(groupMemberJid) #debug
+                        if groupMemberJid.endswith("@lid"):
+                            contact = contactsByLId[groupMemberJid]
+                        else:
+                            contact = contactsByJId[groupMemberJid]
+                    except:
+                        contact = None
+                    if contact != None:
+                        nameStr = "<" + contact["fullname"] + ">"
+                #Append message:
+                content += "{}: {}: {}\n".format(dateStr, nameStr, text)
+
+            #Write chat file:
+            writeToFile(chatFilename, content)
+
+
+
+
+        #conn = sqlite3.connect(whatsappDbFilename)
+
+        #query = "SELECT p.ROWID, m.label, m.property, m.value, e.value, p.First, p.Middle, p.Last, " \
+        #        + "     datetime(p.Birthday + 978307200, 'unixepoch', 'localtime'), p.Birthday " \
+        #        + "FROM ABMultiValue m " \
+        #        + "INNER JOIN ABPerson p ON m.record_id = p.ROWID " \
+        #        + "LEFT JOIN ABMultiValueEntry e ON e.parent_id = m.UID " \
+        #        + "WHERE m.property != 76 and m.property != 46 " \
+        #        + "ORDER BY p.ROWID ASC, m.UID ASC"
+
+        #personsById = {}
+        #for personId, label, propertyType, value, \
+        #    addressValue, first, middle, last, birthdayStr, birthday \
+
+
     def checkExportNotes(self):
         canUseReadnotes = False
         try:
             import bs4
-            import pytz 
+            import pytz
             import biplist
             canUseReadnotes = True
         except ImportError:
@@ -338,7 +455,7 @@ class IPhoneMatic:
         print(BLUE_COLOR + "Exporting contacts..." + NO_COLOR)
         contactsDbFilename = os.path.join(self.out_dir, "FilesHome/Library/AddressBook/AddressBook.sqlitedb")
         if not os.path.isfile(contactsDbFilename):
-            print("WARNING: AddressBook.sqlite not found. Contacts will not be exported")
+            print(RED_COLOR + "WARNING: AddressBook.sqlite not found. Contacts will not be exported" + NO_COLOR)
             return
         vcfDir = os.path.join(self.out_dir, "Contacts")
         ensureDirs(vcfDir)
@@ -347,6 +464,18 @@ class IPhoneMatic:
         if (os.path.isfile(contactsDbFilename)):
             self.extractContactsVCF(contactsDbFilename, vcfFilename)
 
+    def exportWhatsappChats(self):
+        print(BLUE_COLOR + "Exporting whatsapp chats..." + NO_COLOR)
+        whatsappContactsDbFilename = os.path.join(self.out_dir, "FilesAppGroups/group.net.whatsapp.WhatsApp.shared/ContactsV2.sqlite")
+        whatsappDbFilename = os.path.join(self.out_dir, "FilesAppGroups/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite")
+        if not os.path.isfile(whatsappDbFilename):
+            print(RED_COLOR + "ERROR: ChatStorage.sqlite not found. Whatsapp chats will not be exported" + NO_COLOR)
+            return
+        if not os.path.isfile(whatsappContactsDbFilename):
+            print(RED_COLOR + "WARNING: ContactsV2.sqlite not found. Group member names will not be written" + NO_COLOR)
+        chatsDir = os.path.join(self.out_dir, "WhatsappChats")
+        ensureDirs(chatsDir)
+        self.extractWhatsappChatsFromDb(whatsappDbFilename, whatsappContactsDbFilename, chatsDir)
 
 
 def main():
@@ -368,9 +497,9 @@ def main():
     matic = IPhoneMatic(args.backup_dir, args.out_dir, args.pretend, args.numeric)
     print(BLUE_COLOR + "Extracting links to camera pictures..." + NO_COLOR)
     matic.extractHardlinks("Camera", "CameraRollDomain", "%Media/DCIM%")
-    #Some Thumbnails: 
+    #Some Thumbnails:
     #    matic.extractHardlinks("FromMac", "CameraRollDomain", "%Media/PhotoData/Thumbnails/V2/PhotoData/Sync/100SYNCD/%")
-    #More Thumbnails: 
+    #More Thumbnails:
     #    matic.extractHardlinks("Thumbnails", "CameraRollDomain", "%Media/PhotoData/Metadata/PhotoData/Sync/100SYNCD/%")
     print(BLUE_COLOR + "Extracting links to whatsapp pictures..." + NO_COLOR)
     matic.extractHardlinks("WhatsappProfilePictures", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Media/Profile/%jpg")
@@ -384,6 +513,8 @@ def main():
     matic.exportNotes()
     #Export contacts
     matic.exportContacts()
+    #Export Whatsapp chats
+    matic.exportWhatsappChats()
 
 
 

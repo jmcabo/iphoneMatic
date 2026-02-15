@@ -442,7 +442,7 @@ def process_note(columns, sqlconn):
   else:
     note_title = common.remove_line_breakers(columns["apple_title"]).strip()
 
-  print("processing '%s'" % (note_title,))
+  #debug: print("processing '%s'" % (note_title,))
 
   notesdb.add_macapt_note(sqlconn, columns)
   sqlconn.commit()
