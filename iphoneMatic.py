@@ -320,6 +320,7 @@ class IPhoneMatic:
 
 
     def exportNotes(self):
+        print(BLUE_COLOR + "Exporting notes..." + NO_COLOR)
         if not self.checkExportNotes():
             print(RED_COLOR + "ERROR: You need to run 'pip install --break-system-packages bs4 pytz biplist' to be able to export Notes (or you can comment out exportNotes() at the bottom of this file)" + NO_COLOR)
             return
@@ -334,6 +335,7 @@ class IPhoneMatic:
                 + "\" --output \"" + destNotesDir + "\"")
 
     def exportContacts(self):
+        print(BLUE_COLOR + "Exporting contacts..." + NO_COLOR)
         contactsDbFilename = os.path.join(self.out_dir, "FilesHome/Library/AddressBook/AddressBook.sqlitedb")
         if not os.path.isfile(contactsDbFilename):
             print("WARNING: AddressBook.sqlite not found. Contacts will not be exported")
@@ -364,13 +366,16 @@ def main():
 
 
     matic = IPhoneMatic(args.backup_dir, args.out_dir, args.pretend, args.numeric)
+    print(BLUE_COLOR + "Extracting links to camera pictures..." + NO_COLOR)
     matic.extractHardlinks("Camera", "CameraRollDomain", "%Media/DCIM%")
     #Some Thumbnails: 
     #    matic.extractHardlinks("FromMac", "CameraRollDomain", "%Media/PhotoData/Thumbnails/V2/PhotoData/Sync/100SYNCD/%")
     #More Thumbnails: 
     #    matic.extractHardlinks("Thumbnails", "CameraRollDomain", "%Media/PhotoData/Metadata/PhotoData/Sync/100SYNCD/%")
+    print(BLUE_COLOR + "Extracting links to whatsapp pictures..." + NO_COLOR)
     matic.extractHardlinks("WhatsappProfilePictures", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Media/Profile/%jpg")
     matic.extractHardlinks("Whatsapp", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Message/Media%", "TypeWhatsapp")
+    print(BLUE_COLOR + "Extracting links to app files..." + NO_COLOR)
     matic.extractHardlinks("FTPManager", "AppDomainGroup-group.com.skyjos.ftpmanager", "%", "TypeApp")
     matic.extractHardlinks("Files", "AppDomainGroup-group.com.apple.FileProvider.LocalStorage", "%", "TypeApp")
     matic.extractHardlinks("FilesHome", "HomeDomain", "%", "TypeApp")
