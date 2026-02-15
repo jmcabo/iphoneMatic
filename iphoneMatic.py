@@ -13,7 +13,16 @@ from enum import Enum
 from datetime import datetime
 from argparse import RawTextHelpFormatter
 from bplist import BPListReader
+from sys import stderr, stdout, stdin
 
+
+USE_COLORS = True
+if os.name == "nt" or not stdout.isatty():  #os.name can be: nt, posix or java
+    USE_COLORS = False
+GREEN_COLOR = '\033[01;32m'    if USE_COLORS else ""
+BLUE_COLOR = '\033[01;34m'  if USE_COLORS else ""
+RED_COLOR = '\033[01;31m' if USE_COLORS else ""
+NO_COLOR = '\033[00m'          if USE_COLORS else ""
 
 class PropertyType(Enum):
     PHONE = 3
@@ -298,7 +307,22 @@ class IPhoneMatic:
         #print(vcf)
         writeToFile(vcfFilename, vcf)
 
+    def checkExportNotes(self):
+        canUseReadnotes = False
+        try:
+            import bs4
+            import pytz 
+            import biplist
+            canUseReadnotes = True
+        except ImportError:
+            pass
+        return canUseReadnotes
+
+
     def exportNotes(self):
+        if not self.checkExportNotes():
+            print(RED_COLOR + "ERROR: You need to run 'pip install --break-system-packages bs4 pytz biplist' to be able to export Notes (or you can comment out exportNotes() at the bottom of this file)" + NO_COLOR)
+            return
         notesDbFilename = os.path.join(self.out_dir, "FilesAppGroups/group.com.apple.notes/NoteStore.sqlite")
         if not os.path.isfile(notesDbFilename):
             print("WARNING: NoteStore.sqlite not found. Notes will not be exported")
@@ -319,9 +343,7 @@ class IPhoneMatic:
         suffixDate = datetime.fromtimestamp(os.path.getmtime(contactsDbFilename)).strftime("%Y-%m-%d")
         vcfFilename = os.path.join(vcfDir, "contacts_" + suffixDate + ".vcf")
         if (os.path.isfile(contactsDbFilename)):
-            matic.extractContactsVCF(contactsDbFilename, vcfFilename)
-
-
+            self.extractContactsVCF(contactsDbFilename, vcfFilename)
 
 
 
