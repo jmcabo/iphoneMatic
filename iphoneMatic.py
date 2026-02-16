@@ -40,6 +40,13 @@ def isFilename_IMG_NNNN(s):
 def isFilename_Guid(s):
     return re.match(r'[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}', s) != None
 
+def fixFilename(s):
+    #debug: encode filename
+    s = s.replace(":", "_")
+    s = s.replace("…", "_")
+    s = s.replace("+", "_")
+    return s
+
 def formatNames(first, middle, last):
     s = ""
     if first != None:
@@ -317,7 +324,7 @@ class IPhoneMatic:
         #print(vcf)
         writeToFile(vcfFilename, vcf)
 
-    def extractWhatsappChatsFromDb(self, whatsappDbFilename, whatsappContactsDbFilename, chatsDir):
+    def extractWhatsappChatsFromDb(self, whatsappDbFilename, whatsappContactsDbFilename, chatsDir, chatsDirHtml):
         WHATSAPP_ADS_ID = "status@broadcast"
 
         #Parse contacts:
@@ -368,10 +375,9 @@ class IPhoneMatic:
             r = conn.cursor().execute(query, {"chatJid": chatJid})
 
             chatFilename = os.path.join(chatsDir, chatName + ".txt")
-            #debug: encode filename
-            chatFilename = chatFilename.replace(":", "_")
-            chatFilename = chatFilename.replace("…", "_")
-            chatFilename = chatFilename.replace("+", "_")
+            chatFilenameHtml = os.path.join(chatsDirHtml, chatName + ".html")
+            chatFilename = fixFilename(chatFilename)
+            chatFilenameHtml = fixFilename(chatFilenameHtml)
 
             #Add _1 or _2 to filenames that have the same name:
             if chatFilename in existingChatFilenames:
@@ -383,13 +389,15 @@ class IPhoneMatic:
                 n = 1
                 while chatFilename in existingChatFilenames:
                     chatFilename = os.path.join(chatsDir, name + "_" + str(n) + extension)
+                    chatFilenameHtml = os.path.join(chatsDirHtml, name + "_" + str(n) + ".html")
                     n += 1
             existingChatFilenames[chatFilename] = 1
 
             #debug: ToDo:
             #    -group member names
             #    -links (insta, etc.)
-            #        -insta caption
+            #        @insta caption
+            #        -thumbnail instagram
             #    -skip Whatsapp chat(?)
             #    -empty chat name ".txt"
             #    -escape filenames
@@ -398,11 +406,15 @@ class IPhoneMatic:
 
             #Process messages:
             content = ""
+            contentHtml = ""
+            contentHtml += "<html><head><meta charset='UTF-8'></head><body><pre style='font-size: 15px;'>"
             for fromName, toName, text, messageDate, chatSession, groupMemberPk, groupMemberJid, messageType, \
                 thumbnailPath, dataTitle, dataSummary, dataContent1, dataContent2, mediaFileSize, mediaLocalPath  \
                 in r:
+                textHtml = text
                 dateStr = datetime.fromtimestamp(float(messageDate) + 978307200).strftime("%Y-%m-%d %H:%M:%S")
                 nameStr = "<" + fromName + ">" if fromName != None else "<me>"
+                nameStrHtml = "&lt;" + fromName + "&gt;" if fromName != None else "&lt;me&gt;"
                 if groupMemberPk != None and groupMemberJid != None:
                     #Resolve group member name:
                     try:
@@ -414,6 +426,7 @@ class IPhoneMatic:
                         contact = None
                     if contact != None:
                         nameStr = "<" + contact["fullname"] + ">"
+                        nameStrHtml = "&lt;" + contact["fullname"] + "&gt;"
                 #Text by messageType
                 if text == None:
                     MESSAGETYPE_IMAGE = 1
@@ -421,28 +434,41 @@ class IPhoneMatic:
                     MESSAGETYPE_VOICECALL = 59
                     if messageType == MESSAGETYPE_VOICECALL:
                         text = "(Voice Call)"
+                        textHtml = text
                     if messageType == MESSAGETYPE_IMAGE:
                         imagePath = mediaLocalPath
                         if mediaLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaLocalPath]
                         text = "(Image) " + str(imagePath)
+                        textHtml = "<br>(Image) <img width='500' style='display: inline-block;' src='{}'/>".format(str(imagePath))
                     if messageType == MESSAGETYPE_VIDEO:
                         imagePath = mediaLocalPath
                         if mediaLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaLocalPath]
                         text = "(Video) " + str(imagePath)
+                        textHtml = "<br>(Video) <video width='500' controls>" \
+                                   + "  <source src='{}' type='video/mp4'> ".format(str(imagePath)) \
+                                   + "</video>"
 
                 if dataTitle != None:
-                    text += (("\n                     " + dataTitle) if dataTitle != text else "") \
+                    dataDetails = (("\n                     " + dataTitle) if dataTitle != text else "") \
                          +  "\n" \
                          +  (("\n                     " + dataSummary) if dataSummary != None else "") \
                          +  (("\n                     " + dataContent1) if dataContent1 != None and dataContent1 != text else "") \
                          +  (("\n                     " + dataContent2) if dataContent2 != None and dataContent2 != text else "")
+                    text += dataDetails
+                    textHtml += dataDetails
                 #Append message:
                 content += "{}: {}: {}\n".format(dateStr, nameStr, text)
 
+                #Append to html:
+                contentHtml += "{}: {}: {}\n".format(dateStr, nameStrHtml, textHtml)
+
+            contentHtml += "</pre></body></html>"
+
             #Write chat file:
             writeToFile(chatFilename, content)
+            writeToFile(chatFilenameHtml, contentHtml)
 
 
 
@@ -512,8 +538,10 @@ class IPhoneMatic:
         if not os.path.isfile(whatsappContactsDbFilename):
             print(RED_COLOR + "WARNING: ContactsV2.sqlite not found. Group member names will not be written" + NO_COLOR)
         chatsDir = os.path.join(self.out_dir, "WhatsappChats")
+        chatsDirHtml = os.path.join(self.out_dir, "WhatsappChatsHtml")
         ensureDirs(chatsDir)
-        self.extractWhatsappChatsFromDb(whatsappDbFilename, whatsappContactsDbFilename, chatsDir)
+        ensureDirs(chatsDirHtml)
+        self.extractWhatsappChatsFromDb(whatsappDbFilename, whatsappContactsDbFilename, chatsDir, chatsDirHtml)
 
 
 def main():
