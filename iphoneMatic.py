@@ -76,6 +76,7 @@ class IPhoneMatic:
         self.dryRun = dryRun
         self.preserveNames = preserveNames
         self.existingFilenamesMap = {}
+        self.whatsappImagePaths = {}
 
     def extractHardlinks(self, subdir, domainFilter, pathFilter, typeStr="TypeNormal"):
         conn = sqlite3.connect(os.path.join(self.backup_dir, 'Manifest.db'))
@@ -91,6 +92,10 @@ class IPhoneMatic:
         for subfile, domain, relpath, _, blob in r:
             # files are stored in subdirectories, that match first 2 characters of their names
             sourceSubdir = subfile[:2]
+
+            originalWhatsappFilename = relpath
+            if typeStr == "TypeWhatsapp":
+                originalWhatsappFilename = removePrefix(originalWhatsappFilename, "Message/")
 
             relpath = removePrefix(relpath, "Media/DCIM/")
             relpath = removePrefix(relpath, "100APPLE/")
@@ -126,7 +131,7 @@ class IPhoneMatic:
 
             if os.path.isfile(sourceFile):
                 try:
-                    self.processFile(sourceFile, destFile, blob, typeStr)
+                    self.processFile(sourceFile, destFile, blob, typeStr, originalWhatsappFilename)
                 except Exception as e:
                     print("ERROR processing file", destFile, ": ", e, '\n')
                 i += 1
@@ -135,7 +140,7 @@ class IPhoneMatic:
                 return
 
 
-    def processFile(self, sourceFile, destFile, blob, typeStr):
+    def processFile(self, sourceFile, destFile, blob, typeStr, originalWhatsappFilename):
         lastModified = None
         fileSize = None
         parsed = {}
@@ -220,6 +225,10 @@ class IPhoneMatic:
                 destFile = os.path.join(destDir, name + "_" + str(n) + extension)
                 n += 1
         self.existingFilenamesMap[destFile] = sourceFile
+
+        #Add to whatsapp images map:
+        if typeStr == "TypeWhatsapp":
+            self.whatsappImagePaths[originalWhatsappFilename] = destFile
 
         if not os.path.isfile(destFile):
             #Show source and dest:
@@ -344,11 +353,15 @@ class IPhoneMatic:
         for chatName, lastMessageDate, chatLid, chatJid in conn.cursor().execute(query):
 
             query = "SELECT c.ZPARTNERNAME, t.ZPARTNERNAME, m.ZTEXT, m.ZMESSAGEDATE, m.ZCHATSESSION, m.ZGROUPMEMBER, " \
-                    + "g.ZMEMBERJID " \
+                    + "g.ZMEMBERJID, m.ZMESSAGETYPE, " \
+                    + "d.ZTHUMBNAILPATH, d.ZTITLE, d.ZSUMMARY, d.ZCONTENT1, d.ZCONTENT2, " \
+                    + "i.ZFILESIZE, i.ZMEDIALOCALPATH " \
                     + "FROM ZWAMESSAGE m " \
                     + "LEFT JOIN ZWACHATSESSION c ON c.ZCONTACTJID = m.ZFROMJID " \
                     + "LEFT JOIN ZWACHATSESSION t ON t.ZCONTACTJID = m.ZTOJID " \
                     + "LEFT JOIN ZWAGROUPMEMBER g ON g.Z_PK = m.ZGROUPMEMBER " \
+                    + "LEFT JOIN ZWAMEDIAITEM i ON i.Z_PK = m.ZMEDIAITEM " \
+                    + "LEFT JOIN ZWAMESSAGEDATAITEM d ON d.ZMESSAGE = m.Z_PK " \
                     + "WHERE m.ZFROMJID = :chatJid " \
                     + "      OR m.ZTOJID = :chatJid "
 
@@ -385,13 +398,14 @@ class IPhoneMatic:
 
             #Process messages:
             content = ""
-            for fromName, toName, text, messageDate, chatSession, groupMemberPk, groupMemberJid in r:
+            for fromName, toName, text, messageDate, chatSession, groupMemberPk, groupMemberJid, messageType, \
+                thumbnailPath, dataTitle, dataSummary, dataContent1, dataContent2, mediaFileSize, mediaLocalPath  \
+                in r:
                 dateStr = datetime.fromtimestamp(float(messageDate) + 978307200).strftime("%Y-%m-%d %H:%M:%S")
                 nameStr = "<" + fromName + ">" if fromName != None else "<me>"
                 if groupMemberPk != None and groupMemberJid != None:
                     #Resolve group member name:
                     try:
-                        print(groupMemberJid) #debug
                         if groupMemberJid.endswith("@lid"):
                             contact = contactsByLId[groupMemberJid]
                         else:
@@ -400,6 +414,30 @@ class IPhoneMatic:
                         contact = None
                     if contact != None:
                         nameStr = "<" + contact["fullname"] + ">"
+                #Text by messageType
+                if text == None:
+                    MESSAGETYPE_IMAGE = 1
+                    MESSAGETYPE_VIDEO = 2
+                    MESSAGETYPE_VOICECALL = 59
+                    if messageType == MESSAGETYPE_VOICECALL:
+                        text = "(Voice Call)"
+                    if messageType == MESSAGETYPE_IMAGE:
+                        imagePath = mediaLocalPath
+                        if mediaLocalPath in self.whatsappImagePaths:
+                            imagePath = self.whatsappImagePaths[mediaLocalPath]
+                        text = "(Image) " + str(imagePath)
+                    if messageType == MESSAGETYPE_VIDEO:
+                        imagePath = mediaLocalPath
+                        if mediaLocalPath in self.whatsappImagePaths:
+                            imagePath = self.whatsappImagePaths[mediaLocalPath]
+                        text = "(Video) " + str(imagePath)
+
+                if dataTitle != None:
+                    text += (("\n                     " + dataTitle) if dataTitle != text else "") \
+                         +  "\n" \
+                         +  (("\n                     " + dataSummary) if dataSummary != None else "") \
+                         +  (("\n                     " + dataContent1) if dataContent1 != None and dataContent1 != text else "") \
+                         +  (("\n                     " + dataContent2) if dataContent2 != None and dataContent2 != text else "")
                 #Append message:
                 content += "{}: {}: {}\n".format(dateStr, nameStr, text)
 
