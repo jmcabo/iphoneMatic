@@ -398,6 +398,10 @@ class IPhoneMatic:
             #    -links (insta, etc.)
             #        @insta caption
             #        -thumbnail instagram
+            #        -a href en links
+            #        -escape img src
+            #        -escape video src
+            #        -escape a href
             #    -skip Whatsapp chat(?)
             #    -empty chat name ".txt"
             #    -escape filenames
@@ -414,7 +418,7 @@ class IPhoneMatic:
                 textHtml = text
                 dateStr = datetime.fromtimestamp(float(messageDate) + 978307200).strftime("%Y-%m-%d %H:%M:%S")
                 nameStr = "<" + fromName + ">" if fromName != None else "<me>"
-                nameStrHtml = "&lt;" + fromName + "&gt;" if fromName != None else "&lt;me&gt;"
+                nameStrHtml = "&lt;" + fromName + "&gt;" if fromName != None else "<b>&lt;me&gt;</b>"
                 if groupMemberPk != None and groupMemberJid != None:
                     #Resolve group member name:
                     try:
@@ -428,9 +432,13 @@ class IPhoneMatic:
                         nameStr = "<" + contact["fullname"] + ">"
                         nameStrHtml = "&lt;" + contact["fullname"] + "&gt;"
                 #Text by messageType
+                if text != None:
+                    if messageType == MESSAGETYPE_LINK:
+                        textHtml = "<a target='_blank' href='{}'>{}<a/>".format(text, text)
                 if text == None:
                     MESSAGETYPE_IMAGE = 1
                     MESSAGETYPE_VIDEO = 2
+                    MESSAGETYPE_LINK = 7
                     MESSAGETYPE_VOICECALL = 59
                     if messageType == MESSAGETYPE_VOICECALL:
                         text = "(Voice Call)"
