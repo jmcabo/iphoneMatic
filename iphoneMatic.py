@@ -1,7 +1,28 @@
 #!/usr/bin/env python3
-#iphoneMatic 0.9 - by JMC - Based on https://github.com/alexisrozhkov/extract_media_from_backup/ and https://github.com/farcaller/bplist-python/
-#Created: 2026-02-11
-#Updated: 2026-02-13
+# iphoneMatic 1.1 - by JMC
+#
+# Created: 2026-02-11
+#
+# Creates hardlinks outside an iPhone backup directory exported with Apple Devices (for Windows) or iTunes,
+# so that one can have all the images in a single directory and with filenames that make sense such as "IMG_20260217_102030.jpg"
+# instead of a GUID or hash checksum.
+# It also exports Notes, Contacts as a .VCF file, and Whatsapp chats. Also hardlinks to all app files.
+#
+# See: https://github.com/jmcabo/iphoneMatic
+# 
+# 
+# License:   <a href="http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
+# Authors:   Juan Manuel Cabo
+# Version:   1.1
+# Source:    iphoneMatic.py
+# Last update: 2026-02-17
+# 
+#          Copyright Juan Manuel Cabo 2026.
+# Distributed under the Boost Software License, Version 1.0.
+#    (See accompanying file LICENSE_1_0.txt or copy at
+#          http://www.boost.org/LICENSE_1_0.txt)
+# 
+
 import os
 import shutil
 import sqlite3
