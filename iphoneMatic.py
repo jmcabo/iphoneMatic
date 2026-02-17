@@ -84,6 +84,15 @@ class IPhoneMatic:
         self.preserveNames = preserveNames
         self.existingFilenamesMap = {}
         self.whatsappImagePaths = {}
+        self.whatsappThumbnailPath = ""
+        self.whatsappStickersPath = ""
+
+
+    def extractHardlinksWhatsapp(self, subdir, whatsappThumbnailSubdir, whatsappStickersSubdir, domainFilter, pathFilter, typeStr="TypeNormal"):
+        self.whatsappThumnailPath = os.path.join(self.out_dir, whatsappThumbnailSubdir)
+        self.whatsappStickersPath = os.path.join(self.out_dir, whatsappStickersSubdir)
+        self.extractHardlinks(subdir, domainFilter, pathFilter, "TypeWhatsapp")
+
 
     def extractHardlinks(self, subdir, domainFilter, pathFilter, typeStr="TypeNormal"):
         conn = sqlite3.connect(os.path.join(self.backup_dir, 'Manifest.db'))
@@ -93,7 +102,7 @@ class IPhoneMatic:
                 + "WHERE domain LIKE :domainFilter AND relativePath LIKE :pathFilter " \
                 + "ORDER BY relativePath"
 
-        MAX = 500000000000
+        MAX = -1
         i = 0
         r = conn.cursor().execute(query, {"domainFilter": domainFilter, "pathFilter": pathFilter})
         for subfile, domain, relpath, _, blob in r:
@@ -111,6 +120,8 @@ class IPhoneMatic:
             relpath = removePrefix(relpath, "Media/Profile/")
             relpath = removePrefix(relpath, "File Provider Storage/")
 
+            useThumbnailDir = False
+            useStickersDir = False
             if typeStr == "TypeWhatsapp":
                 #Remove parent dirs:
                 p = pathlib.Path(relpath)
@@ -119,10 +130,10 @@ class IPhoneMatic:
                 relpath = name + extension
                 #Skip thumbnails:
                 if extension == ".thumb" or extension == ".favicon" or extension == ".mmsthumb":
-                    continue
+                    useThumbnailDir = True
                 #Skip stickers:
                 if extension == ".webp":
-                    continue
+                    useStickersDir = True
 
             if typeStr == 'TypeAppGroup':
                 domain = removePrefix(domain, "AppDomainGroup-")
@@ -132,6 +143,10 @@ class IPhoneMatic:
             # doing it on sourceFile is not really necessary, but won't hurt
             sourceFile = os.path.abspath(os.path.join(self.backup_dir, sourceSubdir, subfile))
             outputDir = self.out_dir
+            if useThumbnailDir:
+                outputDir = self.whatsappThumbnailPath
+            if useStickersDir:
+                outputDir = self.whatsappStickersPath
             if subdir != "" and subdir != None:
                 outputDir = os.path.join(outputDir, subdir)
             destFile = os.path.abspath(os.path.join(outputDir, relpath))
@@ -143,7 +158,7 @@ class IPhoneMatic:
                     print("ERROR processing file", destFile, ": ", e, '\n')
                 i += 1
 
-            if i == MAX:
+            if MAX != -1 and i == MAX:
                 return
 
 
@@ -362,7 +377,7 @@ class IPhoneMatic:
             query = "SELECT c.ZPARTNERNAME, t.ZPARTNERNAME, m.ZTEXT, m.ZMESSAGEDATE, m.ZCHATSESSION, m.ZGROUPMEMBER, " \
                     + "g.ZMEMBERJID, m.ZMESSAGETYPE, " \
                     + "d.ZTHUMBNAILPATH, d.ZTITLE, d.ZSUMMARY, d.ZCONTENT1, d.ZCONTENT2, " \
-                    + "i.ZFILESIZE, i.ZMEDIALOCALPATH " \
+                    + "i.ZFILESIZE, i.ZMEDIALOCALPATH, i.ZXMPPTHUMBPATH " \
                     + "FROM ZWAMESSAGE m " \
                     + "LEFT JOIN ZWACHATSESSION c ON c.ZCONTACTJID = m.ZFROMJID " \
                     + "LEFT JOIN ZWACHATSESSION t ON t.ZCONTACTJID = m.ZTOJID " \
@@ -413,7 +428,8 @@ class IPhoneMatic:
             contentHtml = ""
             contentHtml += "<html><head><meta charset='UTF-8'></head><body><pre style='font-size: 15px;'>"
             for fromName, toName, text, messageDate, chatSession, groupMemberPk, groupMemberJid, messageType, \
-                thumbnailPath, dataTitle, dataSummary, dataContent1, dataContent2, mediaFileSize, mediaLocalPath  \
+                thumbnailPath, dataTitle, dataSummary, dataContent1, dataContent2, mediaFileSize, mediaLocalPath, \
+                mediaThumbnailLocalPath \
                 in r:
                 textHtml = text
                 dateStr = datetime.fromtimestamp(float(messageDate) + 978307200).strftime("%Y-%m-%d %H:%M:%S")
@@ -434,12 +450,18 @@ class IPhoneMatic:
                 #Text by messageType
                 if text != None:
                     if messageType == MESSAGETYPE_LINK:
-                        textHtml = "<a target='_blank' href='{}'>{}<a/>".format(text, text)
+                        textHtml = ""
+                        if mediaThumbnailLocalPath in self.whatsappImagePaths:
+                            imagePath = self.whatsappImagePaths[mediaThumbnailLocalPath]
+                            textHtml = "\n                     (Link) <img width='200' style='display: inline-block;' src='{}'/>".format(str(imagePath))
+                        textHtml    += "\n                     <a target='_blank' href='{}'>{}<a/>".format(text, text)
                 if text == None:
                     MESSAGETYPE_IMAGE = 1
                     MESSAGETYPE_VIDEO = 2
                     MESSAGETYPE_LINK = 7
+                    MESSAGETYPE_STICKER = 15
                     MESSAGETYPE_VOICECALL = 59
+                    LEADING_SPACE = "                     "
                     if messageType == MESSAGETYPE_VOICECALL:
                         text = "(Voice Call)"
                         textHtml = text
@@ -447,16 +469,20 @@ class IPhoneMatic:
                         imagePath = mediaLocalPath
                         if mediaLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaLocalPath]
-                        text = "(Image) " + str(imagePath)
-                        textHtml = "<br>(Image) <img width='500' style='display: inline-block;' src='{}'/>".format(str(imagePath))
+                        text = "\n" + LEADING_SPACE + "(Image) " + str(imagePath)
+                        textHtml = "\n" + LEADING_SPACE + "(Image) <img width='500' style='display: inline-block;' src='{}'/>".format(str(imagePath))
                     if messageType == MESSAGETYPE_VIDEO:
                         imagePath = mediaLocalPath
                         if mediaLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaLocalPath]
-                        text = "(Video) " + str(imagePath)
-                        textHtml = "<br>(Video) <video width='500' controls>" \
+                        text = "\n" + LEADING_SPACE + "(Video) " + str(imagePath)
+                        textHtml = "\n" + LEADING_SPACE + "(Video) <video width='500' controls>" \
                                    + "  <source src='{}' type='video/mp4'> ".format(str(imagePath)) \
                                    + "</video>"
+                    if messageType == MESSAGETYPE_STICKER:
+                        if mediaLocalPath in self.whatsappImagePaths:
+                            imagePath = self.whatsappImagePaths[mediaLocalPath]
+                            textHtml = "\n                     (Sticker) <img width='200' style='display: inline-block;' src='{}'/>".format(str(imagePath))
 
                 if dataTitle != None:
                     dataDetails = (("\n                     " + dataTitle) if dataTitle != text else "") \
@@ -553,7 +579,7 @@ class IPhoneMatic:
 
 
 def main():
-    desc = "Extracts images as hardlinks and sets the correct date \n" \
+    desc = "Extracts images as hardlinks and sets the correct date - by JMC\n" \
             + "\nExample:  python3 iphoneMatic.py F:\\Backup\\00008110-001A18D40EFB801E F:\\DCIM" \
             + "\nNote: output datetimes are in local timezone"
 
@@ -577,7 +603,7 @@ def main():
     #    matic.extractHardlinks("Thumbnails", "CameraRollDomain", "%Media/PhotoData/Metadata/PhotoData/Sync/100SYNCD/%")
     print(BLUE_COLOR + "Extracting links to whatsapp pictures..." + NO_COLOR)
     matic.extractHardlinks("WhatsappProfilePictures", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Media/Profile/%jpg")
-    matic.extractHardlinks("Whatsapp", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Message/Media%", "TypeWhatsapp")
+    matic.extractHardlinksWhatsapp("Whatsapp", "WhatsappThumbnails", "WhatsappStickers", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Message/Media%")
     print(BLUE_COLOR + "Extracting links to app files..." + NO_COLOR)
     matic.extractHardlinks("FTPManager", "AppDomainGroup-group.com.skyjos.ftpmanager", "%", "TypeApp")
     matic.extractHardlinks("Files", "AppDomainGroup-group.com.apple.FileProvider.LocalStorage", "%", "TypeApp")
