@@ -339,6 +339,7 @@ class IPhoneMatic:
         #print(vcf)
         writeToFile(vcfFilename, vcf)
 
+
     def extractWhatsappChatsFromDb(self, whatsappDbFilename, whatsappContactsDbFilename, chatsDir, chatsDirHtml):
         WHATSAPP_ADS_ID = "status@broadcast"
 
@@ -409,11 +410,11 @@ class IPhoneMatic:
             existingChatFilenames[chatFilename] = 1
 
             #debug: ToDo:
-            #    -group member names
+            #    @group member names
             #    -links (insta, etc.)
             #        @insta caption
-            #        -thumbnail instagram
-            #        -a href en links
+            #        @thumbnail instagram
+            #        @a href en links
             #        -escape img src
             #        -escape video src
             #        -escape a href
@@ -421,7 +422,7 @@ class IPhoneMatic:
             #    -empty chat name ".txt"
             #    -escape filenames
             #    -<200e> en filenames
-            #    -media items (image filename?)
+            #    @media items (image filename?)
 
             #Process messages:
             content = ""
@@ -435,6 +436,7 @@ class IPhoneMatic:
                 dateStr = datetime.fromtimestamp(float(messageDate) + 978307200).strftime("%Y-%m-%d %H:%M:%S")
                 nameStr = "<" + fromName + ">" if fromName != None else "<me>"
                 nameStrHtml = "&lt;" + fromName + "&gt;" if fromName != None else "<b>&lt;me&gt;</b>"
+                LEADING_SPACE = "                     "
                 if groupMemberPk != None and groupMemberJid != None:
                     #Resolve group member name:
                     try:
@@ -453,15 +455,17 @@ class IPhoneMatic:
                         textHtml = ""
                         if mediaThumbnailLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaThumbnailLocalPath]
-                            textHtml = "\n                     (Link) <img width='200' style='display: inline-block;' src='{}'/>".format(str(imagePath))
-                        textHtml    += "\n                     <a target='_blank' href='{}'>{}<a/>".format(text, text)
+                            imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
+                            textHtml = "\n" + LEADING_SPACE \
+                                + "(Link) <a target='_blank' href='{}'> ".format(text) \
+                                + "<img width='200' style='display: inline-block;' src='{}'/></a>".format(str(imagePath))
+                        textHtml    += "\n" + LEADING_SPACE + "<a target='_blank' href='{}'>{}</a>".format(text, text)
                 if text == None:
                     MESSAGETYPE_IMAGE = 1
                     MESSAGETYPE_VIDEO = 2
                     MESSAGETYPE_LINK = 7
                     MESSAGETYPE_STICKER = 15
                     MESSAGETYPE_VOICECALL = 59
-                    LEADING_SPACE = "                     "
                     if messageType == MESSAGETYPE_VOICECALL:
                         text = "(Voice Call)"
                         textHtml = text
@@ -469,12 +473,14 @@ class IPhoneMatic:
                         imagePath = mediaLocalPath
                         if mediaLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaLocalPath]
+                            imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
                         text = "\n" + LEADING_SPACE + "(Image) " + str(imagePath)
                         textHtml = "\n" + LEADING_SPACE + "(Image) <img width='500' style='display: inline-block;' src='{}'/>".format(str(imagePath))
                     if messageType == MESSAGETYPE_VIDEO:
                         imagePath = mediaLocalPath
                         if mediaLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaLocalPath]
+                            imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
                         text = "\n" + LEADING_SPACE + "(Video) " + str(imagePath)
                         textHtml = "\n" + LEADING_SPACE + "(Video) <video width='500' controls>" \
                                    + "  <source src='{}' type='video/mp4'> ".format(str(imagePath)) \
@@ -482,14 +488,15 @@ class IPhoneMatic:
                     if messageType == MESSAGETYPE_STICKER:
                         if mediaLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaLocalPath]
-                            textHtml = "\n                     (Sticker) <img width='200' style='display: inline-block;' src='{}'/>".format(str(imagePath))
+                            imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
+                            textHtml = "\n" + LEADING_SPACE + "(Sticker) <img width='200' style='display: inline-block;' src='{}'/>".format(str(imagePath))
 
                 if dataTitle != None:
-                    dataDetails = (("\n                     " + dataTitle) if dataTitle != text else "") \
+                    dataDetails = (("\n" + LEADING_SPACE + dataTitle) if dataTitle != text else "") \
                          +  "\n" \
-                         +  (("\n                     " + dataSummary) if dataSummary != None else "") \
-                         +  (("\n                     " + dataContent1) if dataContent1 != None and dataContent1 != text else "") \
-                         +  (("\n                     " + dataContent2) if dataContent2 != None and dataContent2 != text else "")
+                         +  (("\n" + LEADING_SPACE + dataSummary) if dataSummary != None else "") \
+                         +  (("\n" + LEADING_SPACE + dataContent1) if dataContent1 != None and dataContent1 != text else "") \
+                         +  (("\n" + LEADING_SPACE + dataContent2) if dataContent2 != None and dataContent2 != text else "")
                     text += dataDetails
                     textHtml += dataDetails
                 #Append message:
@@ -504,22 +511,6 @@ class IPhoneMatic:
             writeToFile(chatFilename, content)
             writeToFile(chatFilenameHtml, contentHtml)
 
-
-
-
-        #conn = sqlite3.connect(whatsappDbFilename)
-
-        #query = "SELECT p.ROWID, m.label, m.property, m.value, e.value, p.First, p.Middle, p.Last, " \
-        #        + "     datetime(p.Birthday + 978307200, 'unixepoch', 'localtime'), p.Birthday " \
-        #        + "FROM ABMultiValue m " \
-        #        + "INNER JOIN ABPerson p ON m.record_id = p.ROWID " \
-        #        + "LEFT JOIN ABMultiValueEntry e ON e.parent_id = m.UID " \
-        #        + "WHERE m.property != 76 and m.property != 46 " \
-        #        + "ORDER BY p.ROWID ASC, m.UID ASC"
-
-        #personsById = {}
-        #for personId, label, propertyType, value, \
-        #    addressValue, first, middle, last, birthdayStr, birthday \
 
 
     def checkExportNotes(self):
