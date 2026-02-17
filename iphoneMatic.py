@@ -144,9 +144,9 @@ class IPhoneMatic:
             sourceFile = os.path.abspath(os.path.join(self.backup_dir, sourceSubdir, subfile))
             outputDir = self.out_dir
             if useThumbnailDir:
-                outputDir = self.whatsappThumbnailPath
+                outputDir = os.path.join(outputDir, self.whatsappThumbnailPath)
             if useStickersDir:
-                outputDir = self.whatsappStickersPath
+                outputDir = os.path.join(outputDir, self.whatsappStickersPath)
             if subdir != "" and subdir != None:
                 outputDir = os.path.join(outputDir, subdir)
             destFile = os.path.abspath(os.path.join(outputDir, relpath))
