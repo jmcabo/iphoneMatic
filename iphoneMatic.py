@@ -30,6 +30,7 @@ import argparse
 import pathlib
 import re
 import errno
+import html
 from enum import Enum
 from datetime import datetime
 from argparse import RawTextHelpFormatter
@@ -478,9 +479,9 @@ class IPhoneMatic:
                             imagePath = self.whatsappImagePaths[mediaThumbnailLocalPath]
                             imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
                             textHtml = "\n" + LEADING_SPACE \
-                                + "(Link) <a target='_blank' href='{}'> ".format(text) \
+                                + "(Link) <a target='_blank' href='{}'> ".format(html.escape(text)) \
                                 + "<img width='200' style='display: inline-block;' src='{}'/></a>".format(str(imagePath))
-                        textHtml    += "\n" + LEADING_SPACE + "<a target='_blank' href='{}'>{}</a>".format(text, text)
+                        textHtml    += "\n" + LEADING_SPACE + "<a target='_blank' href='{}'>{}</a>".format(html.escape(text), html.escape(text))
                 if text == None:
                     MESSAGETYPE_IMAGE = 1
                     MESSAGETYPE_VIDEO = 2
