@@ -234,9 +234,8 @@ def ReadNotesHighSierra(db, source, user, css, attachments, odb, blob_path, outp
             f.close()
         try:
           text_content = ProcessNoteBodyBlob(data, css, attachments)
-          txtFilename = row['title']
-          txtFilename = txtFilename.replace(":", "_")
-          txtFilename = txtFilename.replace("…", "_")
+          txtFilename = row['title']  #debug
+          txtFilename = fixFilename(txtFilename)  #debug
           writeToFile(os.path.join(outputPath, txtFilename + ".txt"), text_content)  #debug
         except KeyError:
           _log_warning('Could not find version number; only processing text ' + data.hex())
@@ -274,6 +273,21 @@ def IsHighSierraDb(db):
   except sqlite3.Error as ex:
     _log_error("Failed to list tables of db. Error Details:{}".format(str(ex)) )
   return True
+
+def fixFilename(s):         #debug
+    s = s.replace("…", "_")
+    s = s.replace("+", "_")
+    #Windows forbidden chars:
+    s = s.replace("<", "_")
+    s = s.replace(">", "_")
+    s = s.replace(":", "_")
+    s = s.replace("\"", "_")
+    s = s.replace("/", "_")
+    s = s.replace("\\", "_")
+    s = s.replace("|", "_")
+    s = s.replace("?", "_")
+    s = s.replace("*", "_")
+    return s
 
 def writeToFile(filename, content):
     print("Writing to", filename) #debug

@@ -63,11 +63,25 @@ def isFilename_Guid(s):
     return re.match(r'[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}', s) != None
 
 def fixFilename(s):
-    #debug: encode filename
+    #Windows forbidden chars:
+    s = s.replace("<", "_")
+    s = s.replace(">", "_")
     s = s.replace(":", "_")
+    s = s.replace("\"", "_")
+    s = s.replace("/", "_")
+    s = s.replace("\\", "_")
+    s = s.replace("|", "_")
+    s = s.replace("?", "_")
+    s = s.replace("*", "_")
+    s = s.replace("‎", "")
+    return s
+
+
+def fixFilenameWithPlus(s):
     s = s.replace("…", "_")
     s = s.replace("+", "_")
-    return s
+    return fixFilename(s)
+
 
 def formatNames(first, middle, last):
     s = ""
@@ -111,7 +125,7 @@ class IPhoneMatic:
 
 
     def extractHardlinksWhatsapp(self, subdir, whatsappThumbnailSubdir, whatsappStickersSubdir, domainFilter, pathFilter, typeStr="TypeNormal"):
-        self.whatsappThumnailPath = os.path.join(self.out_dir, whatsappThumbnailSubdir)
+        self.whatsappThumbnailPath = os.path.join(self.out_dir, whatsappThumbnailSubdir)
         self.whatsappStickersPath = os.path.join(self.out_dir, whatsappStickersSubdir)
         self.extractHardlinks(subdir, domainFilter, pathFilter, "TypeWhatsapp")
 
@@ -156,6 +170,9 @@ class IPhoneMatic:
                 #Skip stickers:
                 if extension == ".webp":
                     useStickersDir = True
+                #debug:
+                #debug: if extension == ".pdf":
+                #debug:     print("TESTING01: " + relpath)  #debug
 
             if typeStr == 'TypeAppGroup':
                 domain = removePrefix(domain, "AppDomainGroup-")
@@ -169,7 +186,7 @@ class IPhoneMatic:
                 outputDir = os.path.join(outputDir, self.whatsappThumbnailPath)
             if useStickersDir:
                 outputDir = os.path.join(outputDir, self.whatsappStickersPath)
-            if subdir != "" and subdir != None:
+            if subdir != "" and subdir != None and not useThumbnailDir and not useStickersDir:
                 outputDir = os.path.join(outputDir, subdir)
             destFile = os.path.abspath(os.path.join(outputDir, relpath))
 
@@ -235,6 +252,7 @@ class IPhoneMatic:
                 destDir = str(p.parent)
 
                 #Replace IMG_NNNN with originalFilename
+                originalFilename = fixFilename(originalFilename)
                 destFile = os.path.join(destDir, originalFilename)
             else:
                 #Rewrite filename using the MTIME date:
@@ -255,7 +273,8 @@ class IPhoneMatic:
                         if name.startswith("IMG_"):
                             name = "VID_" + name[4:]
 
-                    destFile = os.path.join(destDir, name + extension)
+                    newFilename = fixFilename(name + extension)
+                    destFile = os.path.join(destDir, newFilename)
 
         #Add _1 or _2 to filenames that have the same lastModified in seconds or the same originalFilename
         if destFile in self.existingFilenamesMap:
@@ -412,10 +431,8 @@ class IPhoneMatic:
 
             r = conn.cursor().execute(query, {"chatJid": chatJid})
 
-            chatFilename = os.path.join(chatsDir, chatName + ".txt")
-            chatFilenameHtml = os.path.join(chatsDirHtml, chatName + ".html")
-            chatFilename = fixFilename(chatFilename)
-            chatFilenameHtml = fixFilename(chatFilenameHtml)
+            chatFilename = os.path.join(chatsDir, fixFilenameWithPlus(chatName + ".txt"))
+            chatFilenameHtml = os.path.join(chatsDirHtml, fixFilenameWithPlus(chatName + ".html"))
 
             #Add _1 or _2 to filenames that have the same name:
             if chatFilename in existingChatFilenames:
@@ -437,9 +454,9 @@ class IPhoneMatic:
             #        @insta caption
             #        @thumbnail instagram
             #        @a href en links
-            #        -escape img src
-            #        -escape video src
-            #        -escape a href
+            #        @escape img src
+            #        @escape video src
+            #        @escape a href
             #    -skip Whatsapp chat(?)
             #    -empty chat name ".txt"
             #    -escape filenames
@@ -480,7 +497,7 @@ class IPhoneMatic:
                             imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
                             textHtml = "\n" + LEADING_SPACE \
                                 + "(Link) <a target='_blank' href='{}'> ".format(html.escape(text)) \
-                                + "<img width='200' style='display: inline-block;' src='{}'/></a>".format(str(imagePath))
+                                + "<img width='200' style='display: inline-block;' src='{}'/></a>".format(html.escape(str(imagePath)))
                         textHtml    += "\n" + LEADING_SPACE + "<a target='_blank' href='{}'>{}</a>".format(html.escape(text), html.escape(text))
                 if text == None:
                     MESSAGETYPE_IMAGE = 1
@@ -497,7 +514,7 @@ class IPhoneMatic:
                             imagePath = self.whatsappImagePaths[mediaLocalPath]
                             imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
                         text = "\n" + LEADING_SPACE + "(Image) " + str(imagePath)
-                        textHtml = "\n" + LEADING_SPACE + "(Image) <img width='500' style='display: inline-block;' src='{}'/>".format(str(imagePath))
+                        textHtml = "\n" + LEADING_SPACE + "(Image) <img width='500' style='display: inline-block;' src='{}'/>".format(html.escape(str(imagePath)))
                     if messageType == MESSAGETYPE_VIDEO:
                         imagePath = mediaLocalPath
                         if mediaLocalPath in self.whatsappImagePaths:
@@ -505,13 +522,13 @@ class IPhoneMatic:
                             imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
                         text = "\n" + LEADING_SPACE + "(Video) " + str(imagePath)
                         textHtml = "\n" + LEADING_SPACE + "(Video) <video width='500' controls>" \
-                                   + "  <source src='{}' type='video/mp4'> ".format(str(imagePath)) \
+                                   + "  <source src='{}' type='video/mp4'> ".format(html.escape(str(imagePath))) \
                                    + "</video>"
                     if messageType == MESSAGETYPE_STICKER:
                         if mediaLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaLocalPath]
                             imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
-                            textHtml = "\n" + LEADING_SPACE + "(Sticker) <img width='200' style='display: inline-block;' src='{}'/>".format(str(imagePath))
+                            textHtml = "\n" + LEADING_SPACE + "(Sticker) <img width='200' style='display: inline-block;' src='{}'/>".format(html.escape(str(imagePath)))
 
                 if dataTitle != None:
                     dataDetails = (("\n" + LEADING_SPACE + dataTitle) if dataTitle != text else "") \
