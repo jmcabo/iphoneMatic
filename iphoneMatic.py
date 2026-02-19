@@ -62,6 +62,12 @@ def isFilename_IMG_NNNN(s):
 def isFilename_Guid(s):
     return re.match(r'[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}', s) != None
 
+def escapeForVcf(s):
+    #Windows forbidden chars:
+    s = s.replace("\r", "_")
+    s = s.replace("\n", "_")
+    return s
+
 def fixFilename(s):
     #Windows forbidden chars:
     s = s.replace("<", "_")
@@ -122,9 +128,29 @@ class IPhoneMatic:
         self.whatsappImagePaths = {}
         self.whatsappThumbnailPath = ""
         self.whatsappStickersPath = ""
+        self.whatsappDocumentsByGuid = {}
+
+    def buildWhatsappDocumentsGuidTable(self):
+
+        whatsappDbFilename = os.path.join(self.out_dir, "FilesAppGroups/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite")
+        if not os.path.isfile(whatsappDbFilename):
+            print(RED_COLOR + "ERROR: ChatStorage.sqlite not found. Whatsapp chats will not be exported" + NO_COLOR)
+            return
+
+        conn = sqlite3.connect(whatsappDbFilename)
+        query = "SELECT i.ZFILESIZE, i.ZMEDIALOCALPATH, i.ZXMPPTHUMBPATH, i.ZAUTHORNAME " \
+                + "FROM ZWAMEDIAITEM i "
+        r = conn.cursor().execute(query)
+        for mediaFileSize, mediaLocalPath, mediaThumbnailLocalPath, docName in r:
+            doc = {"originalFilename": docName, "fileSize": mediaFileSize, \
+                   "localPath": mediaLocalPath, "thumbnailPath": mediaThumbnailLocalPath}
+            #Add to table:
+            self.whatsappDocumentsByGuid[mediaLocalPath] = doc
+
 
 
     def extractHardlinksWhatsapp(self, subdir, whatsappThumbnailSubdir, whatsappStickersSubdir, domainFilter, pathFilter, typeStr="TypeNormal"):
+        self.buildWhatsappDocumentsGuidTable()
         self.whatsappThumbnailPath = os.path.join(self.out_dir, whatsappThumbnailSubdir)
         self.whatsappStickersPath = os.path.join(self.out_dir, whatsappStickersSubdir)
         self.extractHardlinks(subdir, domainFilter, pathFilter, "TypeWhatsapp")
@@ -170,9 +196,6 @@ class IPhoneMatic:
                 #Skip stickers:
                 if extension == ".webp":
                     useStickersDir = True
-                #debug:
-                #debug: if extension == ".pdf":
-                #debug:     print("TESTING01: " + relpath)  #debug
 
             if typeStr == 'TypeAppGroup':
                 domain = removePrefix(domain, "AppDomainGroup-")
@@ -195,6 +218,7 @@ class IPhoneMatic:
                     self.processFile(sourceFile, destFile, blob, typeStr, originalWhatsappFilename)
                 except Exception as e:
                     print("ERROR processing file", destFile, ": ", e, '\n')
+                    print(e)
                 i += 1
 
             if MAX != -1 and i == MAX:
@@ -209,7 +233,7 @@ class IPhoneMatic:
             reader = BPListReader(blob)
             parsed = reader.parse()
             #print(parsed)
-        except:
+        except Exception as e:
             print("Error reading: ", destFile, " with GUID ", os.path.basename(sourceFile))
 
         if "$objects" in parsed and len(parsed["$objects"]) >= 2:
@@ -242,10 +266,6 @@ class IPhoneMatic:
         if originalFilename != None and (isFilename_IMG_NNNN(originalFilename) or isFilename_Guid(originalFilename)):
             originalFilename = None
 
-        #if originalFilename == None:  #debug
-        #    return
-        #print("ORIGINAL FILENAME: ", originalFilename) #debug
-
         if not self.preserveNames and typeStr != "TypeApp":
             if originalFilename != None:
                 p = pathlib.Path(destFile)
@@ -255,8 +275,26 @@ class IPhoneMatic:
                 originalFilename = fixFilename(originalFilename)
                 destFile = os.path.join(destDir, originalFilename)
             else:
+                hasDocFilename = False
+                if typeStr == "TypeWhatsapp" and originalWhatsappFilename in self.whatsappDocumentsByGuid:
+                    #Find the real filename of .PDF and .EPUB files and other docs:
+                    f = self.whatsappDocumentsByGuid[originalWhatsappFilename]
+                    docFilename = f["originalFilename"]
+                    if docFilename != None:
+                        #Get only name and extension:
+                        p = pathlib.Path(docFilename)
+                        extension = p.suffix
+                        name = p.stem
+                        newFilename = fixFilename(name + extension)
+                        #Obtain destDir:
+                        destFilePath = pathlib.Path(destFile)
+                        destDir = str(destFilePath.parent)
+                        #Make full filename:
+                        destFile = os.path.join(destDir, newFilename)
+                        hasDocFilename = True
+
                 #Rewrite filename using the MTIME date:
-                if lastModified != None:
+                if lastModified != None and not hasDocFilename:
                     suffix = datetime.fromtimestamp(lastModified).strftime("%Y%m%d_%H%M%S")
 
                     p = pathlib.Path(destFile)
@@ -354,28 +392,27 @@ class IPhoneMatic:
         for personId, person in personsById.items():
             vcf += "BEGIN:VCARD\n"
             vcf += "VERSION:2.1\n"
-            #debug: escape newlines and others.
             #debug: acentos
-            vcf += "FN:" + person["name"] + "\n"
+            vcf += "FN:" + escapeForVcf(person["name"]) + "\n"
             vcf += "N:" \
-                + (person["last"] if person["last"] != None else "") \
+                + (escapeForVcf(person["last"]) if person["last"] != None else "") \
                 + ";" \
-                + (person["first"] if person["first"] != None else "") \
+                + (escapeForVcf(person["first"]) if person["first"] != None else "") \
                 + ";"  \
-                + (person["middle"] if person["middle"] != None else "") \
+                + (escapeForVcf(person["middle"]) if person["middle"] != None else "") \
                 + ";" \
                 + ";" + "\n"
             for phone in person["phones"]:
                 #debug: phone type: CELL, HOME, WORK, etc.
-                vcf += "TEL;CELL:" + phone + "\n"
+                vcf += "TEL;CELL:" + escapeForVcf(phone) + "\n"
             for email in person["emails"]:
                 #debug: email type
-                vcf += "EMAIL;HOME:" + email + "\n"
+                vcf += "EMAIL;HOME:" + escapeForVcf(email) + "\n"
             for address in person["addresses"]:
                 #debug: multiline addresses?
-                vcf += "ADR;HOME:;;" + address + ";;;;\n"
+                vcf += "ADR;HOME:;;" + escapeForVcf(address) + ";;;;\n"
             if person["birthday"] != "":
-                vcf += "BDAY:" + person["birthday"] + "\n"
+                vcf += "BDAY:" + escapeForVcf(person["birthday"]) + "\n"
             vcf += "END:VCARD\n"
         #print(vcf)
         writeToFile(vcfFilename, vcf)
@@ -383,6 +420,13 @@ class IPhoneMatic:
 
     def extractWhatsappChatsFromDb(self, whatsappDbFilename, whatsappContactsDbFilename, chatsDir, chatsDirHtml):
         WHATSAPP_ADS_ID = "status@broadcast"
+
+        MESSAGETYPE_IMAGE = 1
+        MESSAGETYPE_VIDEO = 2
+        MESSAGETYPE_LINK = 7
+        MESSAGETYPE_DOCUMENT = 8
+        MESSAGETYPE_STICKER = 15
+        MESSAGETYPE_VOICECALL = 59
 
         #Parse contacts:
         contactsByLId = {}
@@ -431,6 +475,8 @@ class IPhoneMatic:
 
             r = conn.cursor().execute(query, {"chatJid": chatJid})
 
+            if chatName == "":
+                chatName = "(empty)"
             chatFilename = os.path.join(chatsDir, fixFilenameWithPlus(chatName + ".txt"))
             chatFilenameHtml = os.path.join(chatsDirHtml, fixFilenameWithPlus(chatName + ".html"))
 
@@ -450,17 +496,17 @@ class IPhoneMatic:
 
             #debug: ToDo:
             #    @group member names
-            #    -links (insta, etc.)
+            #    @links (insta, etc.)
             #        @insta caption
             #        @thumbnail instagram
             #        @a href en links
             #        @escape img src
             #        @escape video src
             #        @escape a href
-            #    -skip Whatsapp chat(?)
-            #    -empty chat name ".txt"
-            #    -escape filenames
-            #    -<200e> en filenames
+            #    #skip Whatsapp chat(?)
+            #    @empty chat name ".txt"
+            #    @escape filenames
+            #    @<200e> en filenames
             #    @media items (image filename?)
 
             #Process messages:
@@ -496,15 +542,33 @@ class IPhoneMatic:
                             imagePath = self.whatsappImagePaths[mediaThumbnailLocalPath]
                             imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
                             textHtml = "\n" + LEADING_SPACE \
-                                + "(Link) <a target='_blank' href='{}'> ".format(html.escape(text)) \
+                                + "(Link) <a target='_blank' href='{}'>".format(html.escape(text)) \
                                 + "<img width='200' style='display: inline-block;' src='{}'/></a>".format(html.escape(str(imagePath)))
                         textHtml    += "\n" + LEADING_SPACE + "<a target='_blank' href='{}'>{}</a>".format(html.escape(text), html.escape(text))
+                if text != None:
+                    if messageType == MESSAGETYPE_DOCUMENT:
+                        #PDFs, EPUBs, DOCX, etc:
+                        textHtml = ""
+                        if mediaLocalPath in self.whatsappImagePaths:
+                            docPath = self.whatsappImagePaths[mediaLocalPath]
+                            #Find thumbnail:
+                            thumbnailPath = None
+                            if mediaLocalPath in self.whatsappDocumentsByGuid:
+                                doc = self.whatsappDocumentsByGuid[mediaLocalPath]
+                                thumbnailMediaLocalPath = doc["thumbnailPath"]
+                                if thumbnailMediaLocalPath != None and thumbnailMediaLocalPath in self.whatsappImagePaths:
+                                    thumbnailPath = self.whatsappImagePaths[thumbnailMediaLocalPath]
+                            #Relativize paths:
+                            docPath = os.path.relpath(docPath, os.path.dirname(chatFilenameHtml))
+                            #Output html:
+                            if thumbnailPath != None:
+                                thumbnailPath = os.path.relpath(thumbnailPath, os.path.dirname(chatFilenameHtml))
+                                textHtml = "\n" + LEADING_SPACE \
+                                    + "(Document) <a target='_blank' href='{}'>".format(html.escape(docPath)) \
+                                    + "<img width='100' style='display: inline-block;' src='{}'/></a>".format(html.escape(str(thumbnailPath)))
+                            else:
+                                textHtml += "\n" + LEADING_SPACE + "<a target='_blank' href='{}'>{}</a>".format(html.escape(docPath), html.escape(docPath))
                 if text == None:
-                    MESSAGETYPE_IMAGE = 1
-                    MESSAGETYPE_VIDEO = 2
-                    MESSAGETYPE_LINK = 7
-                    MESSAGETYPE_STICKER = 15
-                    MESSAGETYPE_VOICECALL = 59
                     if messageType == MESSAGETYPE_VOICECALL:
                         text = "(Voice Call)"
                         textHtml = text
@@ -627,6 +691,10 @@ def main():
     matic = IPhoneMatic(args.backup_dir, args.out_dir, args.pretend, args.numeric)
     print(BLUE_COLOR + "Extracting links to camera pictures..." + NO_COLOR)
     matic.extractHardlinks("Camera", "CameraRollDomain", "%Media/DCIM%")
+    matic.extractHardlinks("FTPManager", "AppDomainGroup-group.com.skyjos.ftpmanager", "%", "TypeApp")
+    matic.extractHardlinks("Files", "AppDomainGroup-group.com.apple.FileProvider.LocalStorage", "%", "TypeApp")
+    matic.extractHardlinks("FilesHome", "HomeDomain", "%", "TypeApp")
+    matic.extractHardlinks("FilesAppGroups", "AppDomainGroup-%", "%", "TypeAppGroup")
     #Some Thumbnails:
     #    matic.extractHardlinks("FromMac", "CameraRollDomain", "%Media/PhotoData/Thumbnails/V2/PhotoData/Sync/100SYNCD/%")
     #More Thumbnails:
@@ -635,10 +703,6 @@ def main():
     matic.extractHardlinks("WhatsappProfilePictures", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Media/Profile/%jpg")
     matic.extractHardlinksWhatsapp("Whatsapp", "WhatsappThumbnails", "WhatsappStickers", "AppDomainGroup-group.net.whatsapp.WhatsApp.shared", "%Message/Media%")
     print(BLUE_COLOR + "Extracting links to app files..." + NO_COLOR)
-    matic.extractHardlinks("FTPManager", "AppDomainGroup-group.com.skyjos.ftpmanager", "%", "TypeApp")
-    matic.extractHardlinks("Files", "AppDomainGroup-group.com.apple.FileProvider.LocalStorage", "%", "TypeApp")
-    matic.extractHardlinks("FilesHome", "HomeDomain", "%", "TypeApp")
-    matic.extractHardlinks("FilesAppGroups", "AppDomainGroup-%", "%", "TypeAppGroup")
     #Export notes:
     matic.exportNotes()
     #Export contacts
