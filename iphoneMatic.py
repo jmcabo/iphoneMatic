@@ -566,8 +566,8 @@ class IPhoneMatic:
                                 textHtml = "\n" + LEADING_SPACE \
                                     + "(Document) <a target='_blank' href='{}'>".format(html.escape(docPath)) \
                                     + "<img width='100' style='display: inline-block;' src='{}'/></a>".format(html.escape(str(thumbnailPath)))
-                            else:
-                                textHtml += "\n" + LEADING_SPACE + "<a target='_blank' href='{}'>{}</a>".format(html.escape(docPath), html.escape(docPath))
+                            docName = os.path.basename(docPath)
+                            textHtml += "\n" + LEADING_SPACE + "<a target='_blank' href='{}'>{}</a>".format(html.escape(docName), html.escape(docName))
                 if text == None:
                     if messageType == MESSAGETYPE_VOICECALL:
                         text = "(Voice Call)"
