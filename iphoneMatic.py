@@ -9,19 +9,19 @@
 # It also exports Notes, Contacts as a .VCF file, and Whatsapp chats. Also hardlinks to all app files.
 #
 # See: https://github.com/jmcabo/iphoneMatic
-# 
-# 
+#
+#
 # License:   <a href="http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
 # Authors:   Juan Manuel Cabo
 # Version:   1.1
 # Source:    iphoneMatic.py
 # Last update: 2026-02-17
-# 
+#
 #          Copyright Juan Manuel Cabo 2026.
 # Distributed under the Boost Software License, Version 1.0.
 #    (See accompanying file LICENSE_1_0.txt or copy at
 #          http://www.boost.org/LICENSE_1_0.txt)
-# 
+#
 
 import os
 import shutil
@@ -119,16 +119,18 @@ def ensureDirs(dirs):
             raise
 
 class IPhoneMatic:
-    def __init__(self, backup_dir, out_dir, dryRun, preserveNames):
+    def __init__(self, backup_dir, out_dir, dryRun, preserveNames, ignoreAlbums):
         self.backup_dir = backup_dir
         self.out_dir = out_dir
         self.dryRun = dryRun
         self.preserveNames = preserveNames
+        self.ignoreAlbums = ignoreAlbums
         self.existingFilenamesMap = {}
         self.whatsappImagePaths = {}
         self.whatsappThumbnailPath = ""
         self.whatsappStickersPath = ""
         self.whatsappDocumentsByGuid = {}
+        self.albumByPictureName = None
 
     def buildWhatsappDocumentsGuidTable(self):
 
@@ -156,7 +158,64 @@ class IPhoneMatic:
         self.extractHardlinks(subdir, domainFilter, pathFilter, "TypeWhatsapp")
 
 
+    def buildAlbumByPictureName(self):
+        if self.ignoreAlbums:
+            self.albumByPictureName = {}
+            return
+
+        photoDataDb = os.path.join(self.backup_dir, '12/12b144c0bd44f2b3dffd9186d3f9c05b917cee25')
+
+        conn = sqlite3.connect(photoDataDb)
+
+
+        albumNamesById = {}
+        query = "SELECT album.ZTITLE, album.Z_PK AS albumId, album.ZPARENTFOLDER AS paretFolder " \
+                + "FROM ZGENERICALBUM album " \
+                + "ORDER BY album.ZTITLE"
+        r = conn.cursor().execute(query)
+        #First pass:
+        for albumTitle, albumId, parentFolderId in r:
+            albumNamesById[albumId] = {"title": albumTitle if albumTitle != None else "(noname)", \
+                                       "parentId": parentFolderId}
+        #Gather parent folders:
+        albumPathsById = {}
+        r = conn.cursor().execute(query)
+        for albumTitle, albumId, parentFolderId in r:
+            albumPath = albumTitle if albumTitle != None else "(noname)"
+            if albumId in albumNamesById:
+                current = albumNamesById[albumId]
+                while current["parentId"] != None:
+                    if current["parentId"] in albumNamesById:
+                        current = albumNamesById[current["parentId"]]
+                        if current["parentId"] != None:  #Don't add root dir as "(noname)"
+                            albumPath = os.path.join(current["title"], albumPath)
+            albumPathsById[albumId] = albumPath
+
+
+        query = "SELECT album.ZTITLE, album.Z_PK AS albumId, za.ZDIRECTORY, za.ZFILENAME " \
+                + "FROM Z_33ASSETS aa " \
+                + "INNER JOIN ZGENERICALBUM album ON album.Z_PK = aa.Z_33ALBUMS " \
+                + "INNER JOIN ZASSET za ON za.Z_PK = aa.Z_3ASSETS " \
+                + "ORDER BY album.ZTITLE"
+
+        self.albumByPictureName = {}
+
+        r = conn.cursor().execute(query)
+        for albumTitle, albumId, imageDirectory, imageFilename in r:
+            dirAndFilename = imageDirectory + "/" + imageFilename
+            if albumId in albumPathsById:
+                albumPath = albumPathsById[albumId]
+            else:
+                albumPath = albumTitle
+            self.albumByPictureName[dirAndFilename] = albumPath
+            #print(albumTitle, " : ", dirAndFilename)
+
+
     def extractHardlinks(self, subdir, domainFilter, pathFilter, typeStr="TypeNormal"):
+
+        if self.albumByPictureName == None and typeStr == "TypePhotos":
+            self.buildAlbumByPictureName()
+
         conn = sqlite3.connect(os.path.join(self.backup_dir, 'Manifest.db'))
 
         # simple query to get only media (without thumbnails)
@@ -174,6 +233,14 @@ class IPhoneMatic:
             originalWhatsappFilename = relpath
             if typeStr == "TypeWhatsapp":
                 originalWhatsappFilename = removePrefix(originalWhatsappFilename, "Message/")
+
+            #Fetch album:
+            albumPath = None
+            if typeStr == "TypePhotos":
+                imagePathKey = removePrefix(relpath, "Media/")
+                if imagePathKey in self.albumByPictureName:
+                    albumPath = self.albumByPictureName[imagePathKey]
+                    #print("Found album: ", albumPath, "for", relpath)
 
             relpath = removePrefix(relpath, "Media/DCIM/")
             relpath = removePrefix(relpath, "100APPLE/")
@@ -211,6 +278,8 @@ class IPhoneMatic:
                 outputDir = os.path.join(outputDir, self.whatsappStickersPath)
             if subdir != "" and subdir != None and not useThumbnailDir and not useStickersDir:
                 outputDir = os.path.join(outputDir, subdir)
+            if albumPath != None:
+                outputDir = os.path.join(outputDir, albumPath)
             destFile = os.path.abspath(os.path.join(outputDir, relpath))
 
             if os.path.isfile(sourceFile):
@@ -255,7 +324,7 @@ class IPhoneMatic:
             try:
                 readerInside = BPListReader(blobInside)
                 parsedInside = readerInside.parse()
-                #print(parsedInside) #debug
+                #print(parsedInside)
             except Exception as e:
                 #print("File '", destFile, "' error in originalFilename attributes: ", e)
                 pass
@@ -392,7 +461,6 @@ class IPhoneMatic:
         for personId, person in personsById.items():
             vcf += "BEGIN:VCARD\n"
             vcf += "VERSION:2.1\n"
-            #debug: acentos
             vcf += "FN:" + escapeForVcf(person["name"]) + "\n"
             vcf += "N:" \
                 + (escapeForVcf(person["last"]) if person["last"] != None else "") \
@@ -493,21 +561,6 @@ class IPhoneMatic:
                     chatFilenameHtml = os.path.join(chatsDirHtml, name + "_" + str(n) + ".html")
                     n += 1
             existingChatFilenames[chatFilename] = 1
-
-            #debug: ToDo:
-            #    @group member names
-            #    @links (insta, etc.)
-            #        @insta caption
-            #        @thumbnail instagram
-            #        @a href en links
-            #        @escape img src
-            #        @escape video src
-            #        @escape a href
-            #    #skip Whatsapp chat(?)
-            #    @empty chat name ".txt"
-            #    @escape filenames
-            #    @<200e> en filenames
-            #    @media items (image filename?)
 
             #Process messages:
             content = ""
@@ -684,13 +737,14 @@ def main():
                         'files would be copied, according to original directory structure')
     parser.add_argument('-n', '--pretend', action='store_true', help="Print source and dest but don't create hardlinks")
     parser.add_argument('-u', '--numeric', action='store_true', help="Use IMG_NNNN.JPG instead of IMG_YYYYmmdd_HHMMSS.JPG")
+    parser.add_argument('-i', '--ignore-albums', action='store_true', help="Don't create subfolders for albums")
 
     args = parser.parse_args()
 
 
-    matic = IPhoneMatic(args.backup_dir, args.out_dir, args.pretend, args.numeric)
+    matic = IPhoneMatic(args.backup_dir, args.out_dir, args.pretend, args.numeric, args.ignore_albums)
     print(BLUE_COLOR + "Extracting links to camera pictures..." + NO_COLOR)
-    matic.extractHardlinks("Camera", "CameraRollDomain", "%Media/DCIM%")
+    matic.extractHardlinks("Camera", "CameraRollDomain", "%Media/DCIM%", "TypePhotos")
     matic.extractHardlinks("FTPManager", "AppDomainGroup-group.com.skyjos.ftpmanager", "%", "TypeApp")
     matic.extractHardlinks("Files", "AppDomainGroup-group.com.apple.FileProvider.LocalStorage", "%", "TypeApp")
     matic.extractHardlinks("FilesHome", "HomeDomain", "%", "TypeApp")
