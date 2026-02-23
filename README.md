@@ -2,6 +2,14 @@
 Takes an iphone backup and creates a directory of all the images but using hardlinks so no extra space occupied. Also uses the IMG_DATE_TIME format.
 Created: 2026-02-11
 
+It also extracts:
+
+    * Images and videos
+    * Whatsapp Images and videos
+    * Whatsapp Chats in HTML and txt with embedded images, stickers, videos and thumbnails.
+    * Contacts as .VCF
+    * Notes as individual .TXTs
+
 The backup can be created with iTunes or the Apple Devices application.
 
 The Apple Devices application is available for free in the Microsoft Store for Windows.
