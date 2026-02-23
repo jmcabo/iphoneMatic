@@ -32,7 +32,7 @@ import re
 import errno
 import html
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timedelta
 from argparse import RawTextHelpFormatter
 from bplist import BPListReader
 from sys import stderr, stdout, stdin
@@ -447,7 +447,8 @@ class IPhoneMatic:
                           "phones": [], "emails": [], "addresses": [],
                           "birthday": ""}
                 if birthday != None and birthday != "":
-                    birthdayFormatted = datetime.fromtimestamp(float(birthday) + 978307200).strftime("%Y-%m-%d")
+                    d = datetime.fromtimestamp(0) + timedelta(seconds = float(birthday) + 978307200)
+                    birthdayFormatted = d.strftime("%Y-%m-%d")
                     person["birthday"] = birthdayFormatted
                 personsById[personId] = person
             if propertyType == PropertyType.PHONE.value:
@@ -594,10 +595,16 @@ class IPhoneMatic:
                         if mediaThumbnailLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaThumbnailLocalPath]
                             imagePath = os.path.relpath(imagePath, os.path.dirname(chatFilenameHtml))
+                            try:
+                                href = text
+                                httpPos = href.index("http")
+                                href = href[httpPos:]
+                            except:
+                                pass
                             textHtml = "\n" + LEADING_SPACE \
-                                + "(Link) <a target='_blank' href='{}'>".format(html.escape(text)) \
+                                + "(Link) <a target='_blank' href='{}'>".format(html.escape(href)) \
                                 + "<img width='200' style='display: inline-block;' src='{}'/></a>".format(html.escape(str(imagePath)))
-                        textHtml    += "\n" + LEADING_SPACE + "<a target='_blank' href='{}'>{}</a>".format(html.escape(text), html.escape(text))
+                        textHtml    += "\n" + LEADING_SPACE + "<a target='_blank' href='{}'>{}</a>".format(html.escape(href), html.escape(text))
                 if text != None:
                     if messageType == MESSAGETYPE_DOCUMENT:
                         #PDFs, EPUBs, DOCX, etc:
