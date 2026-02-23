@@ -379,6 +379,9 @@ class IPhoneMatic:
                     if extlower == ".mov" or extlower == ".mp4":
                         if name.startswith("IMG_"):
                             name = "VID_" + name[4:]
+                    if extlower == ".opus":
+                        if name.startswith("IMG_"):
+                            name = "AUDIO_" + name[4:]
 
                     newFilename = fixFilename(name + extension)
                     destFile = os.path.join(destDir, newFilename)
@@ -492,6 +495,7 @@ class IPhoneMatic:
 
         MESSAGETYPE_IMAGE = 1
         MESSAGETYPE_VIDEO = 2
+        MESSAGETYPE_AUDIO = 3
         MESSAGETYPE_LINK = 7
         MESSAGETYPE_DOCUMENT = 8
         MESSAGETYPE_STICKER = 15
@@ -648,6 +652,15 @@ class IPhoneMatic:
                         textHtml = "\n" + LEADING_SPACE + "(Video) <video width='500' controls>" \
                                    + "  <source src='{}' type='video/mp4'> ".format(html.escape(str(imagePath))) \
                                    + "</video>"
+                    if messageType == MESSAGETYPE_AUDIO:
+                        audioPath = mediaLocalPath
+                        if mediaLocalPath in self.whatsappImagePaths:
+                            audioPath = self.whatsappImagePaths[mediaLocalPath]
+                            audioPath = os.path.relpath(audioPath, os.path.dirname(chatFilenameHtml))
+                        text = "\n" + LEADING_SPACE + "(Audio) " + str(audioPath)
+                        textHtml = "\n" + LEADING_SPACE + "(Audio) <audio width='300' controls>" \
+                                   + "  <source src='{}' type='audio/ogg'> ".format(html.escape(str(audioPath))) \
+                                   + "</audio>"
                     if messageType == MESSAGETYPE_STICKER:
                         if mediaLocalPath in self.whatsappImagePaths:
                             imagePath = self.whatsappImagePaths[mediaLocalPath]
