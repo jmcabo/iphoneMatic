@@ -423,9 +423,28 @@ class IPhoneMatic:
             if lastModified != None:
                 os.utime(destFile, (lastModified, lastModified))
 
+    def resolveLabel(label, phoneTypes):
+        if label >= 0 and label < phoneTypes.length:
+            phoneType = phoneTypes[label - 1]
+            if label == 1:
+                phoneType = "CELL"
+            elif label == 2:
+                phoneType = "HOME"
+            elif label == 5:
+                phoneType = "WORK"
+        else:
+            phoneType = "HOME"
+        return phoneType
+
 
     def extractContactsVCF(self, contactsDbFilename, vcfFilename):
         conn = sqlite3.connect(contactsDbFilename)
+
+        query = "SELECT value " \
+                + "FROM ABMultiValueLabel label "
+        phoneTypes = []
+        for value in conn.cursor().execute(query):
+            phoneTypes.append(value)
 
         query = "SELECT p.ROWID, m.label, m.property, m.value, e.value, p.First, p.Middle, p.Last, " \
                 + "     datetime(p.Birthday + 978307200, 'unixepoch', 'localtime'), p.Birthday " \
@@ -455,11 +474,15 @@ class IPhoneMatic:
                     person["birthday"] = birthdayFormatted
                 personsById[personId] = person
             if propertyType == PropertyType.PHONE.value:
-                person["phones"].append(value)
+                phoneType = resolveLabel(label, phoneTypes)
+                person["phones"].append({"value": value, "type": phoneType})
             elif propertyType == PropertyType.EMAIL.value:
-                person["emails"].append(value)
+                emailType = resolveLabel(label, phoneTypes)
+                person["emails"].append({"value": value, "type": phoneType})
             elif propertyType == PropertyType.ADDRESS.value:
-                person["addresses"].append(addressValue)
+                #debug: multiline addresses:
+                addressType = resolveLabel(label, phoneTypes)
+                person["addresses"].append({"value": addressValue, "type": addressType})
 
         vcf = ""
         for personId, person in personsById.items():
@@ -475,14 +498,12 @@ class IPhoneMatic:
                 + ";" \
                 + ";" + "\n"
             for phone in person["phones"]:
-                #debug: phone type: CELL, HOME, WORK, etc.
-                vcf += "TEL;CELL:" + escapeForVcf(phone) + "\n"
+                vcf += "TEL;" + escapeForVcf(phone["type"]) + ":" + escapeForVcf(phone["value"]) + "\n"
             for email in person["emails"]:
-                #debug: email type
-                vcf += "EMAIL;HOME:" + escapeForVcf(email) + "\n"
+                vcf += "EMAIL;" + escapeForVcf(email["type"]) + ":" + escapeForVcf(email["value"]) + "\n"
             for address in person["addresses"]:
                 #debug: multiline addresses?
-                vcf += "ADR;HOME:;;" + escapeForVcf(address) + ";;;;\n"
+                vcf += "ADR;" + escapeForVcf(address["type"]) + ":;;" + escapeForVcf(address["value"]) + ";;;;\n"
             if person["birthday"] != "":
                 vcf += "BDAY:" + escapeForVcf(person["birthday"]) + "\n"
             vcf += "END:VCARD\n"
