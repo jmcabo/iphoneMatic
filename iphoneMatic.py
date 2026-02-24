@@ -424,7 +424,7 @@ class IPhoneMatic:
                 os.utime(destFile, (lastModified, lastModified))
 
     def resolveLabel(self, label, phoneTypes):
-        if label >= 0 and label < len(phoneTypes):
+        if label != None and label >= 0 and label < len(phoneTypes):
             phoneType = phoneTypes[label - 1]
             if label == 1:
                 phoneType = "CELL"
@@ -440,11 +440,10 @@ class IPhoneMatic:
     def extractContactsVCF(self, contactsDbFilename, vcfFilename):
         conn = sqlite3.connect(contactsDbFilename)
 
-        query = "SELECT value " \
-                + "FROM ABMultiValueLabel label "
+        query = "SELECT value FROM ABMultiValueLabel label"
         phoneTypes = []
         for value in conn.cursor().execute(query):
-            phoneTypes.append(value)
+            phoneTypes.append(value[0])
 
         query = "SELECT p.ROWID, m.label, m.property, m.value, e.value, p.First, p.Middle, p.Last, " \
                 + "     datetime(p.Birthday + 978307200, 'unixepoch', 'localtime'), p.Birthday " \
