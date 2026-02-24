@@ -423,7 +423,7 @@ class IPhoneMatic:
             if lastModified != None:
                 os.utime(destFile, (lastModified, lastModified))
 
-    def resolveLabel(label, phoneTypes):
+    def resolveLabel(self, label, phoneTypes):
         if label >= 0 and label < phoneTypes.length:
             phoneType = phoneTypes[label - 1]
             if label == 1:
@@ -474,14 +474,14 @@ class IPhoneMatic:
                     person["birthday"] = birthdayFormatted
                 personsById[personId] = person
             if propertyType == PropertyType.PHONE.value:
-                phoneType = resolveLabel(label, phoneTypes)
+                phoneType = self.resolveLabel(label, phoneTypes)
                 person["phones"].append({"value": value, "type": phoneType})
             elif propertyType == PropertyType.EMAIL.value:
-                emailType = resolveLabel(label, phoneTypes)
+                emailType = self.resolveLabel(label, phoneTypes)
                 person["emails"].append({"value": value, "type": phoneType})
             elif propertyType == PropertyType.ADDRESS.value:
                 #debug: multiline addresses:
-                addressType = resolveLabel(label, phoneTypes)
+                addressType = self.resolveLabel(label, phoneTypes)
                 person["addresses"].append({"value": addressValue, "type": addressType})
 
         vcf = ""
