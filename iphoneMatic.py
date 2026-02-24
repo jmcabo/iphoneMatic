@@ -424,7 +424,7 @@ class IPhoneMatic:
                 os.utime(destFile, (lastModified, lastModified))
 
     def resolveLabel(self, label, phoneTypes):
-        if label >= 0 and label < phoneTypes.length:
+        if label >= 0 and label < len(phoneTypes):
             phoneType = phoneTypes[label - 1]
             if label == 1:
                 phoneType = "CELL"
