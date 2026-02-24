@@ -5,8 +5,8 @@ Created: 2026-02-11
 It also extracts:
 
     * Images and videos
-    * Whatsapp Images and videos
-    * Whatsapp Chats in HTML and txt with embedded images, stickers, videos and thumbnails.
+    * Whatsapp images, videos and audios.
+    * Whatsapp Chats in HTML and txt with embedded images, stickers, videos, audios and thumbnails.
     * Contacts as .VCF
     * Notes as individual .TXTs
 
