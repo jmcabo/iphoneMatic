@@ -46,7 +46,7 @@ Good Luck!
 
 --jm
 
-*Installation notes:*
+# Installation notes:
 
      The script doesn't require extra modules to do the image extraction to hardlinks.
      But to do the Notes exporting, the following modules are required:
@@ -64,7 +64,8 @@ Good Luck!
            #Export notes:
            # matic.exportNotes()
 
-*Appendix 1:* To view HEIC files natively in Windows, a codec is necessary. Microsoft charges $1 for the codec at:
+# Appendix 1: 
+To view HEIC files natively in Windows, a codec is necessary. Microsoft charges $1 for the codec at:
 
       https://apps.microsoft.com/detail/9nmzlz57r3t7
 
