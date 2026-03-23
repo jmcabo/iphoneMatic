@@ -26,19 +26,19 @@ The Apple Devices app doesn't let you change the destination directory. I was go
              
 Example command line (Windows):
 
-    F:\> python3 iphoneMatic.py F:\Backup\00008110-001A18D40EFB801E F:\DCIM
-    f:\Backup\00008110-001A18D40EFB801E\14\14c9249d327cc25cd03cc7682175dfac56f79268 -> F:\DCIM\Camera\IMG_20250711_220111.PNG
-    f:\Backup\00008110-001A18D40EFB801E\2e\2e3db5790e3b8c09ddb470ffa49573fc58eaf764 -> F:\DCIM\Camera\IMG_20250713_181255.HEIC
-    f:\Backup\00008110-001A18D40EFB801E\e4\e40948bc14f5da406e0c667721eeac811df1ec3d -> F:\DCIM\Camera\VID_20250713_180244.MOV
-    f:\Backup\00008110-001A18D40EFB801E\06\06d624a45988c5177d0cca2902868f24e2d459ad -> F:\DCIM\Camera\IMG_20250714_083054.JPG
+    F:\> python3 iphoneMatic.py F:\Backup\00008110-001A18D40EFB801E F:\Links
+    f:\Backup\00008110-001A18D40EFB801E\14\14c9249d327cc25cd03cc7682175dfac56f79268 -> F:\Links\Camera\IMG_20250711_220111.PNG
+    f:\Backup\00008110-001A18D40EFB801E\2e\2e3db5790e3b8c09ddb470ffa49573fc58eaf764 -> F:\Links\Camera\IMG_20250713_181255.HEIC
+    f:\Backup\00008110-001A18D40EFB801E\e4\e40948bc14f5da406e0c667721eeac811df1ec3d -> F:\Links\Camera\VID_20250713_180244.MOV
+    f:\Backup\00008110-001A18D40EFB801E\06\06d624a45988c5177d0cca2902868f24e2d459ad -> F:\Links\Camera\IMG_20250714_083054.JPG
     [..]
 
 Example run (Linux):
 
-    user1@machine1:/media/veracrypt1$ ./iphoneMatic.py Backup/00008110-001A18D40EFB801E/ DCIM/
-    /media/veracrypt1/Backup/00008110-001A18D40EFB801E/5c/5cbc273a62c27bf11d657c0b2994c496d4cfdf26 -> /media/veracrypt1/DCIM/VID_20250801_100420.MOV
-    /media/veracrypt1/Backup/00008110-001A18D40EFB801E/9e/9ed1c1ae594513c0f9696fb435888c8c6935cf15 -> /media/veracrypt1/DCIM/IMG_20250714_175224.HEIC
-    /media/veracrypt1/Backup/00008110-001A18D40EFB801E/f6/f685f2ae9e4c54a5178423aa25b100bebfa6ce34 -> /media/veracrypt1/DCIM/IMG_20250725_144243.HEIC
+    user1@machine1:/media/veracrypt1$ ./iphoneMatic.py Backup/00008110-001A18D40EFB801E/ Links/
+    /media/veracrypt1/Backup/00008110-001A18D40EFB801E/5c/5cbc273a62c27bf11d657c0b2994c496d4cfdf26 -> /media/veracrypt1/Links/VID_20250801_100420.MOV
+    /media/veracrypt1/Backup/00008110-001A18D40EFB801E/9e/9ed1c1ae594513c0f9696fb435888c8c6935cf15 -> /media/veracrypt1/Links/IMG_20250714_175224.HEIC
+    /media/veracrypt1/Backup/00008110-001A18D40EFB801E/f6/f685f2ae9e4c54a5178423aa25b100bebfa6ce34 -> /media/veracrypt1/Links/IMG_20250725_144243.HEIC
     [..]
 
 
@@ -77,6 +77,14 @@ scroll to the middle of the page, click on Download.
 A file named Media_Foundation_Codecs.zip will appear.
 Uncompress it and double click on Microsoft.HEVCVideoExtension_2.3.8.0_neutral_~_8wekyb3d8bbwe.AppxBundle.
 And now the Photos app can display .HEIC images from iPhone.
+
+
+# Appendix 2: 
+When changing the F:\ disk to a different Windows computuer, there might be problems with permissions. You can tell because the WhatsApp chats are not refreshed and the old ones are kept instead.
+To solve this, either delete the destination F:\Links\ folder so that a new one is created, or change the windows permissions.
+Or, alternatively, right click on cmd and Run it as an Administrator.
+
+
 
 Cheers!
 
